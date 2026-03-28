@@ -12,7 +12,7 @@
             align-items: center;
             min-height: 100vh;
             margin: 0;
-            background-color: #f8fafc;
+            background: #f8fafc;
             color: #1e293b;
         }
         .container {
@@ -26,73 +26,58 @@
         h1 {
             font-size: 2.25rem;
             font-weight: 800;
-            margin-bottom: 1rem;
+            margin: 0 0 1rem;
             color: #2563eb;
         }
         .number-box {
             margin-top: 1.5rem;
             padding: 1rem;
-            background-color: #eff6ff;
-            border-radius: 0.5rem;
+            background: #eff6ff;
+            border-radius: .5rem;
         }
         .label {
-            font-size: 0.875rem;
+            font-size: .875rem;
             font-weight: 600;
             text-transform: uppercase;
             color: #64748b;
-            letter-spacing: 0.05em;
+            letter-spacing: .05em;
         }
         #random-integer {
             font-size: 3.5rem;
             font-weight: 900;
             color: #1e40af;
-            margin: 0.5rem 0;
+            margin: .5rem 0;
         }
         button {
             margin-top: 1.5rem;
-            padding: 0.5rem 1rem;
-            background-color: #2563eb;
-            color: white;
+            padding: .5rem 1rem;
+            background: #2563eb;
+            color: #fff;
             border: none;
-            border-radius: 0.375rem;
+            border-radius: .375rem;
             cursor: pointer;
             font-weight: 600;
         }
         button:hover {
-            background-color: #1d4ed8;
+            background: #1d4ed8;
         }
     </style>
 </head>
 <body>
-
     <div class="container">
         <h1 id="message"></h1>
-        
         <div class="number-box">
             <div class="label">Random Integer</div>
             <div id="random-integer"></div>
         </div>
-
         <button onclick="updateData()">Generate New Number</button>
     </div>
-
     <script>
         function updateData() {
-            // Set the message
             document.getElementById("message").textContent = "Hello World";
-            
-            // Generate a random integer between 1 and 100
-            const randomInt = Math.floor(Math.random() * 100) + 1;
-            
-            // Print the integer to the screen
-            document.getElementById("random-integer").textContent = randomInt;
+            document.getElementById("random-integer").textContent = Math.floor(Math.random() * 100) + 1;
         }
-
-        // Initialize on load
         window.onload = updateData;
     </script>
-
 </body>
 </html>
-
-
