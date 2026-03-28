@@ -1,6 +1,190 @@
-<style>
-    /* Other styles */
-    .chess-piece {
-        font-size: 55px;
-    }
-</style>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chess Drill</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+        }
+        h1 {
+            text-align: center;
+            margin-bottom: 20px;
+            color: #333;
+            font-size: 28px;
+        }
+        .board-container {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 20px;
+        }
+        #board {
+            display: inline-grid;
+            grid-template-columns: repeat(8, 60px);
+            grid-template-rows: repeat(8, 60px);
+            gap: 0;
+            border: 3px solid #333;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+            background: #333;
+        }
+        .square {
+            width: 60px;
+            height: 60px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 40px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: transform 0.1s;
+        }
+        .square:hover {
+            transform: scale(1.05);
+        }
+        .square-light {
+            background-color: #f0d9b5;
+        }
+        .square-dark {
+            background-color: #baca44;
+        }
+        .controls {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        button {
+            padding: 12px 24px;
+            font-size: 16px;
+            cursor: pointer;
+            border: none;
+            border-radius: 5px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            font-weight: bold;
+            transition: transform 0.2s, box-shadow 0.2s;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+        }
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+        }
+        button:active {
+            transform: translateY(0);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>♟ Chess Drill ♟</h1>
+        <div class="board-container">
+            <div id="board"></div>
+        </div>
+        <div class="controls">
+            <button onclick="loadRandomPosition()">Load Random Position</button>
+            <button onclick="clearBoard()">Clear Board</button>
+        </div>
+    </div>
+
+    <script>
+        // Unicode chess piece symbols
+        const pieces = {
+            'K': '♔', 'Q': '♕', 'R': '♖', 'B': '♗', 'N': '♘', 'P': '♙',
+            'k': '♚', 'q': '♛', 'r': '♜', 'b': '♝', 'n': '♞', 'p': '♟'
+        };
+
+        // Common chess opening positions
+        const positions = [
+            // Starting position
+            'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR',
+            // Italian Game
+            'rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR',
+            // Sicilian Defense
+            'rnbqkbnr/pp1ppppp/8/2p5/4P3/8/PPPP1PPP/RNBQKBNR',
+            // French Defense
+            'rnbqkbnr/pppp1ppp/4p3/8/4P3/8/PPPP1PPP/RNBQKBNR',
+            // Ruy Lopez
+            'rnbqkbnr/pppp1ppp/8/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R',
+            // Scholar's Mate trap
+            'rnb1kbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR',
+            // Endgame: King and Rook vs King
+            '8/8/8/8/8/8/4K1R1/4k3',
+            // Endgame: Queen vs Rook
+            '8/8/8/8/8/8/4K1Q1/4k1r1',
+            // Back rank mate threat
+            'r1bqkb1r/pppp1ppp/2n2n2/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R'
+        ];
+
+        function fenToBoard(fen) {
+            const board = [];
+            const rows = fen.split('/');
+            
+            for (let row of rows) {
+                const boardRow = [];
+                for (let char of row) {
+                    if (isNaN(char)) {
+                        boardRow.push(char);
+                    } else {
+                        for (let i = 0; i < parseInt(char); i++) {
+                            boardRow.push('.');
+                        }
+                    }
+                }
+                board.push(boardRow);
+            }
+            return board;
+        }
+
+        function renderBoard(fen) {
+            const boardDiv = document.getElementById('board');
+            boardDiv.innerHTML = '';
+            const board = fenToBoard(fen);
+            
+            for (let i = 0; i < 8; i++) {
+                for (let j = 0; j < 8; j++) {
+                    const square = document.createElement('div');
+                    square.className = 'square';
+                    square.classList.add((i + j) % 2 === 0 ? 'square-light' : 'square-dark');
+                    
+                    const piece = board[i][j];
+                    if (piece !== '.') {
+                        square.textContent = pieces[piece];
+                    }
+                    
+                    boardDiv.appendChild(square);
+                }
+            }
+        }
+
+        function loadRandomPosition() {
+            const randomFen = positions[Math.floor(Math.random() * positions.length)];
+            renderBoard(randomFen);
+        }
+
+        function clearBoard() {
+            renderBoard('8/8/8/8/8/8/8/8');
+        }
+
+        // Load random position on page load
+        window.addEventListener('load', loadRandomPosition);
+    </script>
+</body>
+</html>
