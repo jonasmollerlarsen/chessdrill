@@ -201,6 +201,19 @@
         border-color: #e1a9a9;
     }
 
+    #stats-display {
+        width: 100%;
+        margin: 0;
+        padding: 7px 10px;
+        border-radius: 10px;
+        background: #fff8e9;
+        border: 1px solid #ecd9a8;
+        font-family: Consolas, "Courier New", monospace;
+        font-size: 0.84rem;
+        color: var(--ink);
+        text-align: left;
+    }
+
     .attribution {
         margin: 8px 0 0;
         text-align: center;
@@ -247,13 +260,14 @@
     </div>
 
     <aside class="info-pane">
-        <p id="best-move-display"></p>
-        <p id="user-move-display"></p>
-        <p id="text-display"></p>
         <a id="url-display" href="" target="_blank" rel="noopener noreferrer"></a>
+        <p id="text-display"></p>
+        <p id="stats-display"></p>
+        <p id="user-move-display"></p>
+        <p id="best-move-display"></p>
 
         <div class="controls">
-            <button id="load-btn" type="button">Load New Position</button>
+            <button id="load-btn" type="button">Next Position</button>
         </div>
     </aside>
 </section>
@@ -271,6 +285,7 @@ const board = document.getElementById('board');
 const bestMoveDisplay = document.getElementById('best-move-display');
 const userMoveDisplay = document.getElementById('user-move-display');
 const textDisplay = document.getElementById('text-display');
+const statsDisplay = document.getElementById('stats-display');
 const urlDisplay = document.getElementById('url-display');
 const loadBtn = document.getElementById('load-btn');
 const fallbackEntry = {
@@ -280,15 +295,99 @@ const fallbackEntry = {
 };
 let cachedPositions = null;
 let currentBestMove = null;
+let currentFen = null;
+let currentPositionUrl = null;
+let hasScoredCurrentPosition = false;
+const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+const EVAL_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
+const FEN_CACHE_KEY = 'chessdrill-fen-cache-v1';
+const EVAL_CACHE_KEY = 'chessdrill-eval-cache-v1';
+const POSITION_STATS_KEY = 'chessdrill-position-stats-v1';
+
+function loadPersistentCache(key) {
+    try {
+        const raw = localStorage.getItem(key);
+        return raw ? JSON.parse(raw) : {};
+    } catch {
+        return {};
+    }
+}
+
+function savePersistentCache(key, cacheObj) {
+    try {
+        localStorage.setItem(key, JSON.stringify(cacheObj));
+    } catch {
+        // Ignore storage quota/privacy mode failures.
+    }
+}
+
+const fenCache = loadPersistentCache(FEN_CACHE_KEY);
+const evalCache = loadPersistentCache(EVAL_CACHE_KEY);
+const positionStats = loadPersistentCache(POSITION_STATS_KEY);
+
+function getPositionStats(url) {
+    if (!url) {
+        return { correct: 0, incorrect: 0 };
+    }
+    return positionStats[url] || { correct: 0, incorrect: 0 };
+}
+
+function savePositionStats() {
+    savePersistentCache(POSITION_STATS_KEY, positionStats);
+}
+
+function incrementPositionStat(url, isCorrect) {
+    if (!url) {
+        return;
+    }
+    const current = getPositionStats(url);
+    positionStats[url] = {
+        correct: current.correct + (isCorrect ? 1 : 0),
+        incorrect: current.incorrect + (isCorrect ? 0 : 1),
+    };
+    savePositionStats();
+}
+
+function renderStats(url) {
+    if (!url) {
+        statsDisplay.textContent = 'Score: unavailable (missing URL)';
+        return;
+    }
+    const stats = getPositionStats(url);
+    statsDisplay.textContent = `Score: ${stats.correct} correct / ${stats.incorrect} incorrect`;
+}
+
+function getCachedValue(cacheObj, key) {
+    const item = cacheObj[key];
+    if (!item) return null;
+    if (Date.now() > item.expiresAt) {
+        delete cacheObj[key];
+        return null;
+    }
+    return item.value;
+}
+
+function setCachedValue(cacheObj, storageKey, key, value, ttlMs) {
+    cacheObj[key] = {
+        value,
+        expiresAt: Date.now() + ttlMs,
+    };
+    savePersistentCache(storageKey, cacheObj);
+}
 
 const PIECE_SYMBOLS = {
     wK: '♔', wQ: '♕', wR: '♖', wB: '♗', wN: '♘', wP: '♙',
     bK: '♚', bQ: '♛', bR: '♜', bB: '♝', bN: '♞', bP: '♟',
 };
 
-board.addEventListener('drop', (e) => {
+board.addEventListener('drop', async (e) => {
     const { source, target, piece } = e.detail;
     if (!source || !target || target === 'offboard') return;
+
+    if (currentFen) {
+        await loadBestMove(currentFen);
+    }
+
     const selectedMove = `${source}${target}`.toLowerCase();
     const isBestMove = currentBestMove && selectedMove === currentBestMove;
     const symbol = PIECE_SYMBOLS[piece] ?? piece;
@@ -297,6 +396,11 @@ board.addEventListener('drop', (e) => {
         userMoveDisplay.classList.add('correct');
     } else {
         userMoveDisplay.classList.add('incorrect');
+    }
+    if (currentBestMove && !hasScoredCurrentPosition) {
+        incrementPositionStat(currentPositionUrl, !!isBestMove);
+        renderStats(currentPositionUrl);
+        hasScoredCurrentPosition = true;
     }
     const verdict = isBestMove ? 'BEST MOVE' : `Not best (best: ${currentBestMove ?? 'unknown'})`;
     userMoveDisplay.textContent = `Your move: ${symbol} ${source} -> ${target} | ${verdict}`;
@@ -319,10 +423,16 @@ async function loadBestMove(fen) {
     bestMoveDisplay.innerHTML = '<span>Best moves: …</span>';
     bestMoveDisplay.style.display = 'flex';
     try {
-        const url = `https://lichess.org/api/cloud-eval?fen=${encodeURIComponent(normaliseFen(fen))}&multiPv=2`;
-        const res = await fetch(url);
-        if (!res.ok) throw new Error('eval unavailable');
-        const data = await res.json();
+        const normalisedFen = normaliseFen(fen);
+        const url = `https://lichess.org/api/cloud-eval?fen=${encodeURIComponent(normalisedFen)}&multiPv=2`;
+        const cachedEval = getCachedValue(evalCache, normalisedFen);
+        const data = cachedEval || await (async () => {
+            const res = await fetch(url);
+            if (!res.ok) throw new Error('eval unavailable');
+            const json = await res.json();
+            setCachedValue(evalCache, EVAL_CACHE_KEY, normalisedFen, json, EVAL_CACHE_TTL_MS);
+            return json;
+        })();
         const depth = data?.depth ?? '?';
         const pvs = data?.pvs ?? [];
         if (pvs.length === 0) {
@@ -345,11 +455,15 @@ async function loadBestMove(fen) {
 }
 
 function setBoardPosition(entry) {
+    currentFen = entry.fen;
+    currentPositionUrl = entry.url || null;
+    hasScoredCurrentPosition = false;
     board.setAttribute('position', entry.fen.split(' ')[0]);
+    bestMoveDisplay.style.display = 'none';
+    bestMoveDisplay.innerHTML = '';
     userMoveDisplay.classList.remove('correct', 'incorrect');
     userMoveDisplay.style.display = 'none';
     userMoveDisplay.textContent = '';
-    loadBestMove(entry.fen);
 
     if (entry.text) {
         textDisplay.textContent = `Text: ${entry.text}`;
@@ -368,11 +482,12 @@ function setBoardPosition(entry) {
         urlDisplay.textContent = '';
         urlDisplay.style.display = 'none';
     }
+
+    renderStats(currentPositionUrl);
 }
 
 function applyFallback(reason) {
     setBoardPosition(fallbackEntry);
-    loadBestMove(fallbackEntry.fen);
 }
 
 function parsePositionEntries(text) {
@@ -431,13 +546,18 @@ function parseLichessUrl(rawUrl) {
 }
 
 async function getFenFromLichessUrl(lichessUrl) {
+    const cachedFen = getCachedValue(fenCache, lichessUrl);
+    if (cachedFen) {
+        return cachedFen;
+    }
+
     const parsed = parseLichessUrl(lichessUrl);
     if (!parsed) {
         throw new Error('Invalid Lichess URL');
     }
 
     const exportUrl = `https://lichess.org/game/export/${parsed.gameId}?pgnInJson=true&moves=true&tags=true&clocks=false&evals=false&opening=false`;
-    const response = await fetch(exportUrl, { cache: 'no-cache' });
+    const response = await fetch(exportUrl);
     if (!response.ok) {
         throw new Error('Could not load Lichess game export');
     }
@@ -455,7 +575,9 @@ async function getFenFromLichessUrl(lichessUrl) {
         }
     }
 
-    return chess.fen();
+    const resolvedFen = chess.fen();
+    setCachedValue(fenCache, FEN_CACHE_KEY, lichessUrl, resolvedFen, CACHE_TTL_MS);
+    return resolvedFen;
 }
 
 async function resolveEntryFen(entry) {
