@@ -1,197 +1,207 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Chess Drill</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        }
-        .container {
-            background: white;
-            padding: 30px;
-            border-radius: 10px;
-            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
-        }
-        h1 {
-            text-align: center;
-            margin-bottom: 20px;
-            color: #333;
-            font-size: 28px;
-        }
-        .board-container {
-            display: flex;
-            justify-content: center;
-            margin-bottom: 20px;
-        }
-        #board {
-            display: inline-grid;
-            grid-template-columns: repeat(8, 60px);
-            grid-template-rows: repeat(8, 60px);
-            gap: 0;
-            border: 3px solid #333;
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
-            background: #333;
-        }
-        .square {
-            width: 60px;
-            height: 60px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 58px;
-            font-weight: normal;
-            transform: scale(1.0,1.0);
-            cursor: pointer;
-            transition: transform 0.1s;
-        }
-        .square:hover {
-            transform: scale(1.05);
-        }
-        .square-light {
-            background-color: #f0d9b5;
-        }
-        .square-dark {
-            background-color: #baca44;
-        }
-        .controls {
-            display: flex;
-            gap: 10px;
-            justify-content: center;
-            flex-wrap: wrap;
-        }
-        button {
-            padding: 12px 24px;
-            font-size: 16px;
-            cursor: pointer;
-            border: none;
-            border-radius: 5px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            font-weight: bold;
-            transition: transform 0.2s, box-shadow 0.2s;
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
-        }
-        button:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
-        }
-        button:active {
-            transform: translateY(0);
-        }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chess Drill</title>
+<style>
+    :root {
+        --bg-1: #f5f7fb;
+        --bg-2: #e6ecf7;
+        --card: #ffffff;
+        --ink: #1e2a3a;
+        --muted: #5e6e82;
+        --accent: #1f6feb;
+        --accent-2: #0e4fc4;
+        --border: #d8e2f0;
+    }
+
+    * {
+        box-sizing: border-box;
+    }
+
+    body {
+        margin: 0;
+        min-height: 100vh;
+        font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+        color: var(--ink);
+        background:
+            radial-gradient(circle at 20% 20%, rgba(31, 111, 235, 0.12), transparent 45%),
+            radial-gradient(circle at 80% 15%, rgba(14, 79, 196, 0.12), transparent 40%),
+            linear-gradient(160deg, var(--bg-1), var(--bg-2));
+        display: grid;
+        place-items: center;
+        padding: 24px;
+    }
+
+    .app {
+        width: min(100%, 860px);
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 18px;
+        box-shadow: 0 20px 50px rgba(21, 42, 78, 0.18);
+        padding: 24px;
+    }
+
+    h1 {
+        margin: 0 0 8px;
+        font-size: clamp(1.4rem, 2.5vw, 2rem);
+        letter-spacing: 0.02em;
+        text-align: center;
+    }
+
+    .subtitle {
+        margin: 0 0 18px;
+        text-align: center;
+        color: var(--muted);
+    }
+
+    #board {
+        display: block;
+        width: min(100%, 600px);
+        margin: 0 auto;
+        border-radius: 10px;
+        overflow: hidden;
+    }
+
+    .controls {
+        display: flex;
+        justify-content: center;
+        margin-top: 16px;
+    }
+
+    #load-btn {
+        border: none;
+        border-radius: 10px;
+        padding: 11px 16px;
+        background: linear-gradient(180deg, var(--accent), var(--accent-2));
+        color: #fff;
+        font-weight: 600;
+        font-size: 0.95rem;
+        cursor: pointer;
+        box-shadow: 0 8px 20px rgba(31, 111, 235, 0.28);
+        transition: transform 120ms ease, box-shadow 120ms ease;
+    }
+
+    #load-btn:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 12px 24px rgba(31, 111, 235, 0.3);
+    }
+
+    #load-btn:active {
+        transform: translateY(0);
+    }
+
+    #fen-display {
+        max-width: 600px;
+        margin: 14px auto 0;
+        padding: 10px 12px;
+        border-radius: 10px;
+        background: #f7f9fd;
+        border: 1px solid var(--border);
+        font-family: Consolas, "Courier New", monospace;
+        font-size: 0.88rem;
+        line-height: 1.4;
+        word-break: break-all;
+    }
+
+    .attribution {
+        margin: 16px 0 0;
+        text-align: center;
+        color: var(--muted);
+        font-size: 0.88rem;
+    }
+
+    .attribution a {
+        color: var(--accent-2);
+        text-decoration: none;
+        font-weight: 600;
+    }
+
+    .attribution a:hover {
+        text-decoration: underline;
+    }
+</style>
 </head>
 <body>
-    <div class="container">
-        <h1>♟ Chess Drill ♟</h1>
-        <div class="board-container">
-            <div id="board"></div>
-        </div>
-        <div class="controls">
-            <button onclick="loadRandomPosition()">Load Random Position</button>
-            <button onclick="clearBoard()">Clear Board</button>
-        </div>
-    </div>
+<main class="app">
+    <h1>Chess Drill</h1>
+    <p class="subtitle">Random tactical snapshots from your positions list.</p>
 
-    <script>
-        // Unicode chess piece symbols
-        const pieces = {
-            'K': '♔', 'Q': '♕', 'R': '♖', 'B': '♗', 'N': '♘', 'P': '♙',
-            'k': '♚', 'q': '♛', 'r': '♜', 'b': '♝', 'n': '♞', 'p': '♟'
-        };
+<script type="module" src="https://unpkg.com/chessboard-element?module"></script>
 
-        // Common chess opening positions
-        const positions = [
-            // Starting position
-   //         'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR',
-            // Italian Game
- //           'rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR',
-            // Sicilian Defense
-            'rnbqkbnr/pp1ppppp/8/2p5/4P3/8/PPPP1PPP/RNBQKBNR',
-            // French Defense
- //           'rnbqkbnr/pppp1ppp/4p3/8/4P3/8/PPPP1PPP/RNBQKBNR',
-            // Ruy Lopez
-  //          'rnbqkbnr/pppp1ppp/8/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R',
-            // Scholar's Mate trap
-            'rnb1kbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR',
-            // Endgame: King and Rook vs King
-      //      '8/8/8/8/8/8/4K1R1/4k3',
-            // Endgame: Queen vs Rook
-    //        '8/8/8/8/8/8/4K1Q1/4k1r1',
-            // Back rank mate threat
-    //        'r1bqkb1r/pppp1ppp/2n2n2/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R',
+<chess-board id="board"></chess-board>
 
-            // https://lichess.org/FeTnXmgM/white#12
-            'rn1qkb1r/ppp1pppp/5n2/8/2B5/2N2Q2/PPPP1PPP/R1B1K2R w KQkq - 1 7',
+<p id="fen-display"></p>
 
-            'rn1qkb1r/ppp1pppp/8/8/2B1n3/5Q2/PPPP1PPP/R1B1K2R w KQkq - 0 8',
-        //    https://lichess.org/FeTnXmgM/white#14
-        ];
+<div class="controls">
+    <button id="load-btn" type="button">Load New Position</button>
+</div>
 
-        function fenToBoard(fen) {
-            const board = [];
-            const rows = fen.split(' ')[0].split('/');
-            
-            for (let row of rows) {
-                const boardRow = [];
-                for (let char of row) {
-                    if (isNaN(char)) {
-                        boardRow.push(char);
-                    } else {
-                        for (let i = 0; i < parseInt(char); i++) {
-                            boardRow.push('.');
-                        }
-                    }
-                }
-                board.push(boardRow);
-            }
-            return board;
-        }
+<p class="attribution">
+    This site uses <a href="https://github.com/justinfagnani/chessboard-element?tab=License-1-ov-file" target="_blank" rel="noopener noreferrer">chessboard-element</a>.
+    Copyright © 2019 Justin Fagnani
+</p>
+</main>
 
-        function renderBoard(fen) {
-            const boardDiv = document.getElementById('board');
-            boardDiv.innerHTML = '';
-            const board = fenToBoard(fen);
-            
-            for (let i = 0; i < 8; i++) {
-                for (let j = 0; j < 8; j++) {
-                    const square = document.createElement('div');
-                    square.className = 'square';
-                    square.classList.add((i + j) % 2 === 0 ? 'square-light' : 'square-dark');
-                    
-                    const piece = board[i][j];
-                    if (piece !== '.') {
-                        square.textContent = pieces[piece];
-                    }
-                    
-                    boardDiv.appendChild(square);
-                }
-            }
-        }
+<script type="module">
+const board = document.getElementById('board');
+const fenDisplay = document.getElementById('fen-display');
+const loadBtn = document.getElementById('load-btn');
+let cachedPositions = null;
 
-        function loadRandomPosition() {
-            const randomFen = positions[Math.floor(Math.random() * positions.length)];
-            renderBoard(randomFen);
-        }
+function setBoardPosition(fen) {
+    board.setAttribute('position', fen.split(' ')[0]);
+    fenDisplay.textContent = `FEN: ${fen}`;
+}
 
-        function clearBoard() {
-            renderBoard('8/8/8/8/8/8/8/8');
-        }
+async function getPositions() {
+    if (cachedPositions) {
+        return cachedPositions;
+    }
 
-        // Load random position on page load
-        window.addEventListener('load', loadRandomPosition);
-    </script>
+    const response = await fetch('positions.txt', { cache: 'no-cache' });
+    if (!response.ok) {
+        throw new Error('Failed to load positions.txt');
+    }
+
+    const text = await response.text();
+    const positions = text
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter((line) => line.startsWith('FEN:'))
+        .map((line) => line.slice(4).trim())
+        .filter(Boolean);
+
+    if (positions.length === 0) {
+        throw new Error('No FEN positions found in positions.txt');
+    }
+
+    cachedPositions = positions;
+    return positions;
+}
+
+async function loadRandomPosition() {
+    if (window.location.protocol === 'file:') {
+        board.setAttribute('position', 'start');
+        fenDisplay.textContent = 'FEN: start (Open with http://localhost - file:// blocks positions.txt due to CORS)';
+        return;
+    }
+
+    try {
+        const positions = await getPositions();
+        const randomFen = positions[Math.floor(Math.random() * positions.length)];
+        setBoardPosition(randomFen);
+    } catch (error) {
+        // Fallback keeps the page functional if file loading fails.
+        board.setAttribute('position', 'start');
+        fenDisplay.textContent = 'FEN: start (Could not load positions.txt)';
+        console.error(error);
+    }
+}
+
+loadBtn.addEventListener('click', loadRandomPosition);
+loadRandomPosition();
+</script>
 </body>
 </html>
