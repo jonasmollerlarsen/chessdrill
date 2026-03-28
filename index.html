@@ -4,25 +4,120 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Chess Drill</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+        }
+        #board {
+            display: inline-block;
+            border: 2px solid #333;
+        }
+        .row {
+            display: flex;
+        }
+        .square {
+            width: 50px;
+            height: 50px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 30px;
+            font-weight: bold;
+        }
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            margin-top: 20px;
+            cursor: pointer;
+        }
+    </style>
 </head>
 <body>
-    <h1>Welcome to Chess Drill</h1>
+    <h1>Chess Drill</h1>
+    <button onclick="loadRandomPosition()">Load Random Position</button>
     <div id="board"></div>
     <script>
-        // Simple chess board implementation
-        const board = document.getElementById('board');
-        for (let i = 0; i < 8; i++) {
-            const row = document.createElement('div');
-            row.style.display = 'flex';
-            for (let j = 0; j < 8; j++) {
-                const square = document.createElement('div');
-                square.style.width = '50px';
-                square.style.height = '50px';
-                square.style.backgroundColor = (i + j) % 2 === 0 ? 'white' : 'black';
-                row.appendChild(square);
+        // Unicode chess piece symbols
+        const pieces = {
+            'K': '♔', 'Q': '♕', 'R': '♖', 'B': '♗', 'N': '♘', 'P': '♙',
+            'k': '♚', 'q': '♛', 'r': '♜', 'b': '♝', 'n': '♞', 'p': '♟'
+        };
+
+        // Common chess opening positions
+        const positions = [
+            // Starting position
+            'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR',
+            // Italian Game
+            'rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR',
+            // Sicilian Defense
+            'rnbqkbnr/pp1ppppp/8/2p5/4P3/8/PPPP1PPP/RNBQKBNR',
+            // French Defense
+            'rnbqkbnr/pppp1ppp/4p3/8/4P3/8/PPPP1PPP/RNBQKBNR',
+            // Ruy Lopez
+            'rnbqkbnr/pppp1ppp/8/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R',
+            // Scholar's Mate trap
+            'rnb1kbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR',
+            // Endgame: King and Rook vs King
+            '8/8/8/8/8/8/4K1R1/4k3',
+            // Endgame: Queen vs Rook
+            '8/8/8/8/8/8/4K1Q1/4k1r1',
+            // Back rank mate threat
+            'r1bqkb1r/pppp1ppp/2n2n2/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R'
+        ];
+
+        function fenToBoard(fen) {
+            const board = [];
+            const rows = fen.split('/');
+            
+            for (let row of rows) {
+                const boardRow = [];
+                for (let char of row) {
+                    if (isNaN(char)) {
+                        boardRow.push(char);
+                    } else {
+                        for (let i = 0; i < parseInt(char); i++) {
+                            boardRow.push('.');
+                        }
+                    }
+                }
+                board.push(boardRow);
             }
-            board.appendChild(row);
+            return board;
         }
+
+        function renderBoard(fen) {
+            const boardDiv = document.getElementById('board');
+            boardDiv.innerHTML = '';
+            const board = fenToBoard(fen);
+            
+            for (let i = 0; i < 8; i++) {
+                const row = document.createElement('div');
+                row.className = 'row';
+                
+                for (let j = 0; j < 8; j++) {
+                    const square = document.createElement('div');
+                    square.className = 'square';
+                    square.style.backgroundColor = (i + j) % 2 === 0 ? '#f0d9b5' : '#baca44';
+                    
+                    const piece = board[i][j];
+                    if (piece !== '.') {
+                        square.textContent = pieces[piece];
+                    }
+                    
+                    row.appendChild(square);
+                }
+                boardDiv.appendChild(row);
+            }
+        }
+
+        function loadRandomPosition() {
+            const randomFen = positions[Math.floor(Math.random() * positions.length)];
+            renderBoard(randomFen);
+        }
+
+        // Load random position on page load
+        window.addEventListener('load', loadRandomPosition);
     </script>
 </body>
 </html>
