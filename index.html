@@ -66,22 +66,43 @@
 
     #board {
         display: block;
-        width: min(100%, 600px, calc(100dvh - 230px));
-        margin: 0 auto 6px;
+        width: min(100%, 520px, calc(100dvh - 110px));
+        margin: 0;
         border-radius: 10px;
         overflow: hidden;
     }
 
-    .controls {
+    .content-layout {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(240px, 280px);
+        gap: 10px;
+        align-items: start;
+    }
+
+    .board-pane {
         display: flex;
         justify-content: center;
-        margin-top: 10px;
+        align-items: flex-start;
+    }
+
+    .info-pane {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        min-width: 0;
+    }
+
+    .controls {
+        display: flex;
+        justify-content: stretch;
+        margin-top: 2px;
     }
 
     #load-btn {
         border: none;
         border-radius: 10px;
         padding: 9px 14px;
+        width: 100%;
         background: linear-gradient(180deg, var(--accent), var(--accent-2));
         color: #fff;
         font-weight: 600;
@@ -100,27 +121,12 @@
         transform: translateY(0);
     }
 
-    #fen-display {
-        max-width: 600px;
-        margin: 4px auto 0;
-        padding: 7px 10px;
-        border-radius: 10px;
-        background: #f7f9fd;
-        border: 1px solid var(--border);
-        font-family: Consolas, "Courier New", monospace;
-        font-size: 0.82rem;
-        line-height: 1.25;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-    }
-
     #text-display,
     #url-display {
-        max-width: 600px;
-        margin: 4px auto 0;
+        width: 100%;
+        margin: 0;
         color: var(--muted);
-        text-align: center;
+        text-align: left;
         font-size: 0.84rem;
         white-space: nowrap;
         overflow: hidden;
@@ -139,8 +145,8 @@
     }
 
     #best-move-display {
-        max-width: 600px;
-        margin: 4px auto 0;
+        width: 100%;
+        margin: 0;
         padding: 7px 10px;
         border-radius: 10px;
         background: #eef6ff;
@@ -172,8 +178,8 @@
     }
 
     #user-move-display {
-        max-width: 600px;
-        margin: 4px auto 0;
+        width: 100%;
+        margin: 0;
         padding: 7px 10px;
         border-radius: 10px;
         background: #f0faf0;
@@ -183,6 +189,16 @@
         text-align: center;
         color: var(--ink);
         display: none;
+    }
+
+    #user-move-display.correct {
+        background: #e7f7ea;
+        border-color: #86c794;
+    }
+
+    #user-move-display.incorrect {
+        background: #fff2f2;
+        border-color: #e1a9a9;
     }
 
     .attribution {
@@ -201,6 +217,22 @@
     .attribution a:hover {
         text-decoration: underline;
     }
+
+    @media (max-width: 760px) {
+        .content-layout {
+            grid-template-columns: 1fr;
+        }
+
+        .info-pane {
+            width: min(100%, 520px);
+            margin: 0 auto;
+        }
+
+        #text-display,
+        #url-display {
+            text-align: center;
+        }
+    }
 </style>
 </head>
 <body>
@@ -209,17 +241,22 @@
 
 <script type="module" src="https://unpkg.com/chessboard-element?module"></script>
 
-<chess-board id="board" draggable-pieces></chess-board>
+<section class="content-layout">
+    <div class="board-pane">
+        <chess-board id="board" draggable-pieces></chess-board>
+    </div>
 
-<p id="fen-display"></p>
-<p id="best-move-display"></p>
-<p id="user-move-display"></p>
-<p id="text-display"></p>
-<a id="url-display" href="" target="_blank" rel="noopener noreferrer"></a>
+    <aside class="info-pane">
+        <p id="best-move-display"></p>
+        <p id="user-move-display"></p>
+        <p id="text-display"></p>
+        <a id="url-display" href="" target="_blank" rel="noopener noreferrer"></a>
 
-<div class="controls">
-    <button id="load-btn" type="button">Load New Position</button>
-</div>
+        <div class="controls">
+            <button id="load-btn" type="button">Load New Position</button>
+        </div>
+    </aside>
+</section>
 
 <p class="attribution">
     This site uses <a href="https://github.com/justinfagnani/chessboard-element?tab=License-1-ov-file" target="_blank" rel="noopener noreferrer">chessboard-element</a>.
@@ -228,8 +265,9 @@
 </main>
 
 <script type="module">
+import { Chess } from 'https://cdn.jsdelivr.net/npm/chess.js@1.4.0/+esm';
+
 const board = document.getElementById('board');
-const fenDisplay = document.getElementById('fen-display');
 const bestMoveDisplay = document.getElementById('best-move-display');
 const userMoveDisplay = document.getElementById('user-move-display');
 const textDisplay = document.getElementById('text-display');
@@ -241,6 +279,7 @@ const fallbackEntry = {
     url: 'https://lichess.org/FeTnXmgM/white#12',
 };
 let cachedPositions = null;
+let currentBestMove = null;
 
 const PIECE_SYMBOLS = {
     wK: '♔', wQ: '♕', wR: '♖', wB: '♗', wN: '♘', wP: '♙',
@@ -250,8 +289,17 @@ const PIECE_SYMBOLS = {
 board.addEventListener('drop', (e) => {
     const { source, target, piece } = e.detail;
     if (!source || !target || target === 'offboard') return;
+    const selectedMove = `${source}${target}`.toLowerCase();
+    const isBestMove = currentBestMove && selectedMove === currentBestMove;
     const symbol = PIECE_SYMBOLS[piece] ?? piece;
-    userMoveDisplay.textContent = `Your move: ${symbol} ${source} → ${target}`;
+    userMoveDisplay.classList.remove('correct', 'incorrect');
+    if (isBestMove) {
+        userMoveDisplay.classList.add('correct');
+    } else {
+        userMoveDisplay.classList.add('incorrect');
+    }
+    const verdict = isBestMove ? 'BEST MOVE' : `Not best (best: ${currentBestMove ?? 'unknown'})`;
+    userMoveDisplay.textContent = `Your move: ${symbol} ${source} -> ${target} | ${verdict}`;
     userMoveDisplay.style.display = 'block';
 });
 
@@ -267,6 +315,7 @@ function formatEval(pv) {
 }
 
 async function loadBestMove(fen) {
+    currentBestMove = null;
     bestMoveDisplay.innerHTML = '<span>Best moves: …</span>';
     bestMoveDisplay.style.display = 'flex';
     try {
@@ -280,6 +329,7 @@ async function loadBestMove(fen) {
             bestMoveDisplay.innerHTML = '<span>Best moves: not found</span>';
             return;
         }
+        currentBestMove = pvs?.[0]?.moves?.split(' ')?.[0]?.toLowerCase() ?? null;
         bestMoveDisplay.innerHTML = pvs.map((pv, i) => {
             const move = pv.moves?.split(' ')?.[0] ?? '?';
             const ev = formatEval(pv);
@@ -296,7 +346,7 @@ async function loadBestMove(fen) {
 
 function setBoardPosition(entry) {
     board.setAttribute('position', entry.fen.split(' ')[0]);
-    fenDisplay.textContent = `FEN: ${entry.fen}`;
+    userMoveDisplay.classList.remove('correct', 'incorrect');
     userMoveDisplay.style.display = 'none';
     userMoveDisplay.textContent = '';
     loadBestMove(entry.fen);
@@ -322,7 +372,6 @@ function setBoardPosition(entry) {
 
 function applyFallback(reason) {
     setBoardPosition(fallbackEntry);
-    fenDisplay.textContent = `FEN: ${fallbackEntry.fen} (${reason})`;
     loadBestMove(fallbackEntry.fen);
 }
 
@@ -348,7 +397,7 @@ function parsePositionEntries(text) {
                     const value = line.slice(colonIndex + 1).trim();
 
                     if (key === 'fen') {
-                        entry.fen = value;
+                        // Intentionally ignored: positions are resolved from URL only.
                     } else if (key === 'text') {
                         entry.text = value;
                     } else if (key === 'url') {
@@ -358,7 +407,68 @@ function parsePositionEntries(text) {
 
             return entry;
         })
-        .filter((entry) => entry.fen);
+        .filter((entry) => entry.url);
+}
+
+function parseLichessUrl(rawUrl) {
+    try {
+        const parsed = new URL(rawUrl);
+        if (!parsed.hostname.includes('lichess.org')) {
+            return null;
+        }
+
+        const gameId = parsed.pathname.split('/').filter(Boolean)[0];
+        if (!gameId) {
+            return null;
+        }
+
+        const hashMatch = parsed.hash.match(/#(\d+)/);
+        const ply = hashMatch ? parseInt(hashMatch[1], 10) : null;
+        return { gameId, ply };
+    } catch {
+        return null;
+    }
+}
+
+async function getFenFromLichessUrl(lichessUrl) {
+    const parsed = parseLichessUrl(lichessUrl);
+    if (!parsed) {
+        throw new Error('Invalid Lichess URL');
+    }
+
+    const exportUrl = `https://lichess.org/game/export/${parsed.gameId}?pgnInJson=true&moves=true&tags=true&clocks=false&evals=false&opening=false`;
+    const response = await fetch(exportUrl, { cache: 'no-cache' });
+    if (!response.ok) {
+        throw new Error('Could not load Lichess game export');
+    }
+
+    const game = await response.json();
+    const initialFen = game.initialFen && game.initialFen !== 'startpos' ? game.initialFen : undefined;
+    const chess = new Chess(initialFen);
+    const moves = (game.moves || '').trim().split(/\s+/).filter(Boolean);
+    const pliesToPlay = parsed.ply == null ? moves.length : Math.min(parsed.ply, moves.length);
+
+    for (let i = 0; i < pliesToPlay; i++) {
+        const played = chess.move(moves[i]);
+        if (!played) {
+            throw new Error('Could not replay moves from Lichess game');
+        }
+    }
+
+    return chess.fen();
+}
+
+async function resolveEntryFen(entry) {
+    if (!entry.url) {
+        return null;
+    }
+
+    try {
+        const fen = await getFenFromLichessUrl(entry.url);
+        return { ...entry, fen };
+    } catch {
+        return null;
+    }
 }
 
 async function getPositions() {
@@ -372,10 +482,12 @@ async function getPositions() {
     }
 
     const text = await response.text();
-    const positions = parsePositionEntries(text);
+    const parsedEntries = parsePositionEntries(text);
+    const resolvedEntries = await Promise.all(parsedEntries.map((entry) => resolveEntryFen(entry)));
+    const positions = resolvedEntries.filter((entry) => entry && entry.fen);
 
     if (positions.length === 0) {
-        throw new Error('No FEN positions found in positions.txt');
+        throw new Error('No usable positions found in positions.txt');
     }
 
     cachedPositions = positions;
