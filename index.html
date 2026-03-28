@@ -3,81 +3,26 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Hello World & Random Integer</title>
-    <style>
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
-            margin: 0;
-            background: #f8fafc;
-            color: #1e293b;
-        }
-        .container {
-            background: white;
-            padding: 2.5rem;
-            border-radius: 1rem;
-            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
-            text-align: center;
-            border: 1px solid #e2e8f0;
-        }
-        h1 {
-            font-size: 2.25rem;
-            font-weight: 800;
-            margin: 0 0 1rem;
-            color: #2563eb;
-        }
-        .number-box {
-            margin-top: 1.5rem;
-            padding: 1rem;
-            background: #eff6ff;
-            border-radius: .5rem;
-        }
-        .label {
-            font-size: .875rem;
-            font-weight: 600;
-            text-transform: uppercase;
-            color: #64748b;
-            letter-spacing: .05em;
-        }
-        #random-integer {
-            font-size: 3.5rem;
-            font-weight: 900;
-            color: #1e40af;
-            margin: .5rem 0;
-        }
-        button {
-            margin-top: 1.5rem;
-            padding: .5rem 1rem;
-            background: #2563eb;
-            color: #fff;
-            border: none;
-            border-radius: .375rem;
-            cursor: pointer;
-            font-weight: 600;
-        }
-        button:hover {
-            background: #1d4ed8;
-        }
-    </style>
+    <title>Chess Drill</title>
 </head>
 <body>
-    <div class="container">
-        <h1 id="message"></h1>
-        <div class="number-box">
-            <div class="label">Random Integer</div>
-            <div id="random-integer"></div>
-        </div>
-        <button onclick="updateData()">Generate New Number</button>
-    </div>
+    <h1>Welcome to Chess Drill</h1>
+    <div id="board"></div>
     <script>
-        function updateData() {
-            document.getElementById("message").textContent = "Hello World";
-            document.getElementById("random-integer").textContent = Math.floor(Math.random() * 100) + 1;
+        // Simple chess board implementation
+        const board = document.getElementById('board');
+        for (let i = 0; i < 8; i++) {
+            const row = document.createElement('div');
+            row.style.display = 'flex';
+            for (let j = 0; j < 8; j++) {
+                const square = document.createElement('div');
+                square.style.width = '50px';
+                square.style.height = '50px';
+                square.style.backgroundColor = (i + j) % 2 === 0 ? 'white' : 'black';
+                row.appendChild(square);
+            }
+            board.appendChild(row);
         }
-        window.onload = updateData;
     </script>
 </body>
 </html>
