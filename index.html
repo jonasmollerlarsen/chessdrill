@@ -496,29 +496,24 @@ function parsePositionEntries(text) {
         .map((block) => block.trim())
         .filter(Boolean)
         .map((block) => {
-            const entry = {};
-
-            block
+            const entry = { url: '', text: '' };
+            const lines = block
                 .split(/\r?\n/)
                 .map((line) => line.trim())
-                .filter(Boolean)
-                .forEach((line) => {
-                    const colonIndex = line.indexOf(':');
-                    if (colonIndex === -1) {
-                        return;
-                    }
+                .filter(Boolean);
 
-                    const key = line.slice(0, colonIndex).trim().toLowerCase();
-                    const value = line.slice(colonIndex + 1).trim();
+            for (const line of lines) {
+                const urlMatch = line.match(/^url\s*:\s*(.+)$/i);
+                if (urlMatch) {
+                    entry.url = urlMatch[1].trim();
+                    continue;
+                }
 
-                    if (key === 'fen') {
-                        // Intentionally ignored: positions are resolved from URL only.
-                    } else if (key === 'text') {
-                        entry.text = value;
-                    } else if (key === 'url') {
-                        entry.url = value;
-                    }
-                });
+                const textMatch = line.match(/^text\s*:\s*(.+)$/i);
+                if (textMatch) {
+                    entry.text = textMatch[1].trim();
+                }
+            }
 
             return entry;
         })
