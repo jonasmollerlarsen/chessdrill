@@ -7,6 +7,8 @@ Text: Scholar's Mate trap
 FEN: rn1qkb1r/ppp1pppp/5n2/8/2B5/2N2Q2/PPPP1PPP/R1B1K2R w KQkq - 1 7
 URL: https://lichess.org/FeTnXmgM/white#12
 Text: unprotected pawn
+Move: f3 b7
 
 FEN: rn1qkb1r/ppp1pppp/8/8/2B1n3/5Q2/PPPP1PPP/R1B1K2R w KQkq - 0 8
 URL: https://lichess.org/FeTnXmgM/white#14
+Move: f3 f7

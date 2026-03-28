@@ -138,6 +138,53 @@
         text-decoration: underline;
     }
 
+    #best-move-display {
+        max-width: 600px;
+        margin: 4px auto 0;
+        padding: 7px 10px;
+        border-radius: 10px;
+        background: #eef6ff;
+        border: 1px solid #c0d8f8;
+        font-family: Consolas, "Courier New", monospace;
+        font-size: 0.88rem;
+        color: var(--ink);
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+    }
+
+    .best-move-row {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+    }
+
+    .best-move-rank {
+        color: var(--muted);
+        min-width: 1.5ch;
+    }
+
+    .best-move-eval {
+        color: var(--accent-2);
+        font-weight: 600;
+        min-width: 6ch;
+        text-align: right;
+    }
+
+    #user-move-display {
+        max-width: 600px;
+        margin: 4px auto 0;
+        padding: 7px 10px;
+        border-radius: 10px;
+        background: #f0faf0;
+        border: 1px solid #b6ddb6;
+        font-family: Consolas, "Courier New", monospace;
+        font-size: 0.88rem;
+        text-align: center;
+        color: var(--ink);
+        display: none;
+    }
+
     .attribution {
         margin: 8px 0 0;
         text-align: center;
@@ -162,9 +209,11 @@
 
 <script type="module" src="https://unpkg.com/chessboard-element?module"></script>
 
-<chess-board id="board"></chess-board>
+<chess-board id="board" draggable-pieces></chess-board>
 
 <p id="fen-display"></p>
+<p id="best-move-display"></p>
+<p id="user-move-display"></p>
 <p id="text-display"></p>
 <a id="url-display" href="" target="_blank" rel="noopener noreferrer"></a>
 
@@ -181,6 +230,8 @@
 <script type="module">
 const board = document.getElementById('board');
 const fenDisplay = document.getElementById('fen-display');
+const bestMoveDisplay = document.getElementById('best-move-display');
+const userMoveDisplay = document.getElementById('user-move-display');
 const textDisplay = document.getElementById('text-display');
 const urlDisplay = document.getElementById('url-display');
 const loadBtn = document.getElementById('load-btn');
@@ -191,9 +242,64 @@ const fallbackEntry = {
 };
 let cachedPositions = null;
 
+const PIECE_SYMBOLS = {
+    wK: '♔', wQ: '♕', wR: '♖', wB: '♗', wN: '♘', wP: '♙',
+    bK: '♚', bQ: '♛', bR: '♜', bB: '♝', bN: '♞', bP: '♟',
+};
+
+board.addEventListener('drop', (e) => {
+    const { source, target, piece } = e.detail;
+    if (!source || !target || target === 'offboard') return;
+    const symbol = PIECE_SYMBOLS[piece] ?? piece;
+    userMoveDisplay.textContent = `Your move: ${symbol} ${source} → ${target}`;
+    userMoveDisplay.style.display = 'block';
+});
+
+// Expand piece-placement-only FEN to a full FEN (assume white to move, all castling).
+function normaliseFen(fen) {
+    return fen.trim().split(' ').length === 1 ? `${fen} w KQkq - 0 1` : fen;
+}
+
+function formatEval(pv) {
+    if (pv.mate != null) return `#${pv.mate}`;
+    if (pv.cp  != null) return `${pv.cp > 0 ? '+' : ''}${(pv.cp / 100).toFixed(2)}`;
+    return '?';
+}
+
+async function loadBestMove(fen) {
+    bestMoveDisplay.innerHTML = '<span>Best moves: …</span>';
+    bestMoveDisplay.style.display = 'flex';
+    try {
+        const url = `https://lichess.org/api/cloud-eval?fen=${encodeURIComponent(normaliseFen(fen))}&multiPv=2`;
+        const res = await fetch(url);
+        if (!res.ok) throw new Error('eval unavailable');
+        const data = await res.json();
+        const depth = data?.depth ?? '?';
+        const pvs = data?.pvs ?? [];
+        if (pvs.length === 0) {
+            bestMoveDisplay.innerHTML = '<span>Best moves: not found</span>';
+            return;
+        }
+        bestMoveDisplay.innerHTML = pvs.map((pv, i) => {
+            const move = pv.moves?.split(' ')?.[0] ?? '?';
+            const ev = formatEval(pv);
+            return `<span class="best-move-row">`
+                 + `<span class="best-move-rank">${i + 1}.</span>`
+                 + `<span>${move}</span>`
+                 + `<span class="best-move-eval">${ev}</span>`
+                 + `</span>`;
+        }).join('') + `<span style="color:var(--muted);font-size:0.78rem;align-self:flex-end">depth ${depth}</span>`;
+    } catch {
+        bestMoveDisplay.innerHTML = '<span>Best moves: unavailable</span>';
+    }
+}
+
 function setBoardPosition(entry) {
     board.setAttribute('position', entry.fen.split(' ')[0]);
     fenDisplay.textContent = `FEN: ${entry.fen}`;
+    userMoveDisplay.style.display = 'none';
+    userMoveDisplay.textContent = '';
+    loadBestMove(entry.fen);
 
     if (entry.text) {
         textDisplay.textContent = `Text: ${entry.text}`;
@@ -217,6 +323,7 @@ function setBoardPosition(entry) {
 function applyFallback(reason) {
     setBoardPosition(fallbackEntry);
     fenDisplay.textContent = `FEN: ${fallbackEntry.fen} (${reason})`;
+    loadBestMove(fallbackEntry.fen);
 }
 
 function parsePositionEntries(text) {
