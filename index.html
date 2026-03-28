@@ -115,28 +115,30 @@
         // Common chess opening positions
         const positions = [
             // Starting position
-            'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR',
+   //         'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR',
             // Italian Game
-            'rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR',
+ //           'rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR',
             // Sicilian Defense
             'rnbqkbnr/pp1ppppp/8/2p5/4P3/8/PPPP1PPP/RNBQKBNR',
             // French Defense
-            'rnbqkbnr/pppp1ppp/4p3/8/4P3/8/PPPP1PPP/RNBQKBNR',
+ //           'rnbqkbnr/pppp1ppp/4p3/8/4P3/8/PPPP1PPP/RNBQKBNR',
             // Ruy Lopez
-            'rnbqkbnr/pppp1ppp/8/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R',
+  //          'rnbqkbnr/pppp1ppp/8/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R',
             // Scholar's Mate trap
             'rnb1kbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR',
             // Endgame: King and Rook vs King
             '8/8/8/8/8/8/4K1R1/4k3',
             // Endgame: Queen vs Rook
-            '8/8/8/8/8/8/4K1Q1/4k1r1',
+    //        '8/8/8/8/8/8/4K1Q1/4k1r1',
             // Back rank mate threat
-            'r1bqkb1r/pppp1ppp/2n2n2/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R'
+    //        'r1bqkb1r/pppp1ppp/2n2n2/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R',
+
+            'rn1qkb1r/ppp1pppp/5n2/8/2B5/2N2Q2/PPPP1PPP/R1B1K2R w KQkq - 1 7',
         ];
 
         function fenToBoard(fen) {
             const board = [];
-            const rows = fen.split('/');
+            const rows = fen.split(' ')[0].split('/');
             
             for (let row of rows) {
                 const boardRow = [];
