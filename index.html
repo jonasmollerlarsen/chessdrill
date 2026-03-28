@@ -557,10 +557,29 @@ async function getFenFromLichessUrl(lichessUrl) {
         throw new Error('Could not load Lichess game export');
     }
 
-    const game = await response.json();
-    const initialFen = game.initialFen && game.initialFen !== 'startpos' ? game.initialFen : undefined;
-    const chess = new Chess(initialFen);
-    const moves = (game.moves || '').trim().split(/\s+/).filter(Boolean);
+    const body = await response.text();
+    let chess;
+    let moves;
+
+    try {
+        const game = JSON.parse(body);
+        const initialFen = game.initialFen && game.initialFen !== 'startpos' ? game.initialFen : undefined;
+        chess = new Chess(initialFen);
+        moves = (game.moves || '').trim().split(/\s+/).filter(Boolean);
+    } catch {
+        const fenHeaderMatch = body.match(/^\[FEN\s+"([^"]+)"\]/m);
+        const initialFen = fenHeaderMatch ? fenHeaderMatch[1] : undefined;
+
+        const pgnGame = new Chess();
+        const loaded = pgnGame.loadPgn(body);
+        if (!loaded) {
+            throw new Error('Could not parse Lichess export as JSON or PGN');
+        }
+
+        chess = new Chess(initialFen);
+        moves = pgnGame.history();
+    }
+
     const pliesToPlay = parsed.ply == null ? moves.length : Math.min(parsed.ply, moves.length);
 
     for (let i = 0; i < pliesToPlay; i++) {
@@ -580,12 +599,12 @@ async function resolveEntryFen(entry) {
         return null;
     }
 
-    try {
+//    try {
         const fen = await getFenFromLichessUrl(entry.url);
         return { ...entry, fen };
-    } catch {
-        return null;
-    }
+  //  } catch {
+   //     return null;
+   // }
 }
 
 async function getPositions() {
