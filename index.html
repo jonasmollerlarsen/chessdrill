@@ -269,6 +269,10 @@
         <div class="controls">
             <button id="load-btn" type="button">Next Position</button>
         </div>
+
+        <div class="controls">
+            <button id="clear-data-btn" type="button">Clear Local Data</button>
+        </div>
     </aside>
 </section>
 
@@ -288,6 +292,7 @@ const textDisplay = document.getElementById('text-display');
 const statsDisplay = document.getElementById('stats-display');
 const urlDisplay = document.getElementById('url-display');
 const loadBtn = document.getElementById('load-btn');
+const clearDataBtn = document.getElementById('clear-data-btn');
 const fallbackEntry = {
     fen: 'rn1qkb1r/ppp1pppp/5n2/8/2B5/2N2Q2/PPPP1PPP/R1B1K2R w KQkq - 1 7',
     text: '',
@@ -303,6 +308,11 @@ const EVAL_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 const FEN_CACHE_KEY = 'chessdrill-fen-cache-v1';
 const EVAL_CACHE_KEY = 'chessdrill-eval-cache-v1';
 const POSITION_STATS_KEY = 'chessdrill-position-stats-v1';
+const STOCKFISH_DEPTH = 19;
+const STOCKFISH_MOVETIME_MS = 10000;
+const STOCKFISH_MULTI_PV = 2;
+const STOCKFISH_WORKER_URL = 'https://cdn.jsdelivr.net/npm/stockfish@10.0.2/src/stockfish.js';
+const STOCKFISH_WASM_URL  = 'https://cdn.jsdelivr.net/npm/stockfish@10.0.2/src/stockfish.wasm';
 
 function loadPersistentCache(key) {
     try {
@@ -324,6 +334,8 @@ function savePersistentCache(key, cacheObj) {
 const fenCache = loadPersistentCache(FEN_CACHE_KEY);
 const evalCache = loadPersistentCache(EVAL_CACHE_KEY);
 const positionStats = loadPersistentCache(POSITION_STATS_KEY);
+let stockfishWorker = null;
+let stockfishReadyPromise = null;
 
 function getPositionStats(url) {
     if (!url) {
@@ -418,20 +430,139 @@ function formatEval(pv) {
     return '?';
 }
 
+function ensureStockfishReady() {
+    if (stockfishReadyPromise) {
+        return stockfishReadyPromise;
+    }
+
+    stockfishReadyPromise = (async () => {
+        // Fetch script and construct worker via Blob URL to bypass cross-origin Worker restrictions
+        // (required when the page is served from file:// or a different origin)
+        const res = await fetch(STOCKFISH_WORKER_URL);
+        if (!res.ok) throw new Error(`Failed to fetch Stockfish: ${res.status}`);
+        const blob = await res.blob();
+        // Append the WASM URL as a hash so stockfish.js can read it via self.location.hash
+        const blobUrl = URL.createObjectURL(blob) + '#' + STOCKFISH_WASM_URL;
+        return new Promise((resolve, reject) => {
+        const worker = new Worker(blobUrl);
+        URL.revokeObjectURL(blobUrl.split('#')[0]);
+        stockfishWorker = worker;
+
+        const timeout = setTimeout(() => {
+            worker.terminate();
+            stockfishWorker = null;
+            stockfishReadyPromise = null;
+            reject(new Error('Stockfish initialization timeout'));
+        }, 15000);
+
+        const onMessage = (event) => {
+            const line = String(event.data || '');
+            if (line === 'uciok') {
+                worker.postMessage('isready');
+            } else if (line === 'readyok') {
+                clearTimeout(timeout);
+                worker.removeEventListener('message', onMessage);
+                resolve(worker);
+            }
+        };
+
+        worker.addEventListener('message', onMessage);
+        worker.addEventListener('error', (err) => {
+            clearTimeout(timeout);
+            worker.terminate();
+            stockfishWorker = null;
+            stockfishReadyPromise = null;
+            reject(err);
+        }, { once: true });
+        worker.postMessage('uci');
+        }); // inner Promise
+    })(); // async IIFE
+
+    return stockfishReadyPromise;
+}
+
+async function analyzeWithStockfish(fen) {
+    const worker = await ensureStockfishReady();
+
+    return await new Promise((resolve, reject) => {
+        const bestByPv = new Map();
+        let maxDepth = 0;
+        let started = false;
+
+        const timeout = setTimeout(() => {
+            cleanup();
+            reject(new Error('Stockfish analysis timeout'));
+        }, STOCKFISH_MOVETIME_MS + 3000);
+
+        function cleanup() {
+            clearTimeout(timeout);
+            worker.removeEventListener('message', onMessage);
+        }
+
+        function onMessage(event) {
+            const line = String(event.data || '');
+
+            if (!started && line === 'readyok') {
+                started = true;
+                worker.postMessage(`position fen ${normaliseFen(fen)}`);
+                worker.postMessage(`go depth ${STOCKFISH_DEPTH} movetime ${STOCKFISH_MOVETIME_MS}`);
+                return;
+            }
+
+            if (line.startsWith('info ')) {
+                const depthMatch = line.match(/\bdepth\s+(\d+)/);
+                if (depthMatch) {
+                    maxDepth = Math.max(maxDepth, parseInt(depthMatch[1], 10));
+                }
+
+                const multipvMatch = line.match(/\bmultipv\s+(\d+)/);
+                const pvMatch = line.match(/\bpv\s+(.+)$/);
+                if (!multipvMatch || !pvMatch) {
+                    return;
+                }
+
+                const pvIndex = parseInt(multipvMatch[1], 10);
+                if (pvIndex > STOCKFISH_MULTI_PV) {
+                    return;
+                }
+
+                const move = pvMatch[1].trim().split(/\s+/)[0];
+                const cpMatch = line.match(/\bscore\s+cp\s+(-?\d+)/);
+                const mateMatch = line.match(/\bscore\s+mate\s+(-?\d+)/);
+                bestByPv.set(pvIndex, {
+                    moves: move,
+                    cp: cpMatch ? parseInt(cpMatch[1], 10) : null,
+                    mate: mateMatch ? parseInt(mateMatch[1], 10) : null,
+                });
+                return;
+            }
+
+            if (line.startsWith('bestmove ')) {
+                cleanup();
+                const pvs = [...bestByPv.entries()]
+                    .sort((a, b) => a[0] - b[0])
+                    .map((entry) => entry[1]);
+                resolve({ depth: maxDepth || '?', pvs });
+            }
+        }
+
+        worker.addEventListener('message', onMessage);
+        worker.postMessage(`setoption name MultiPV value ${STOCKFISH_MULTI_PV}`);
+        worker.postMessage('isready');
+    });
+}
+
 async function loadBestMove(fen) {
     currentBestMove = null;
     bestMoveDisplay.innerHTML = '<span>Best moves: …</span>';
     bestMoveDisplay.style.display = 'flex';
-    try {
+    //try {
         const normalisedFen = normaliseFen(fen);
-        const url = `https://lichess.org/api/cloud-eval?fen=${encodeURIComponent(normalisedFen)}&multiPv=2`;
         const cachedEval = getCachedValue(evalCache, normalisedFen);
         const data = cachedEval || await (async () => {
-            const res = await fetch(url);
-            if (!res.ok) throw new Error('eval unavailable');
-            const json = await res.json();
-            setCachedValue(evalCache, EVAL_CACHE_KEY, normalisedFen, json, EVAL_CACHE_TTL_MS);
-            return json;
+            const analysis = await analyzeWithStockfish(normalisedFen);
+            setCachedValue(evalCache, EVAL_CACHE_KEY, normalisedFen, analysis, EVAL_CACHE_TTL_MS);
+            return analysis;
         })();
         const depth = data?.depth ?? '?';
         const pvs = data?.pvs ?? [];
@@ -449,9 +580,9 @@ async function loadBestMove(fen) {
                  + `<span class="best-move-eval">${ev}</span>`
                  + `</span>`;
         }).join('') + `<span style="color:var(--muted);font-size:0.78rem;align-self:flex-end">depth ${depth}</span>`;
-    } catch {
-        bestMoveDisplay.innerHTML = '<span>Best moves: unavailable</span>';
-    }
+    //} //catch {
+      //  bestMoveDisplay.innerHTML = '<span>Best moves: unavailable</span>';
+  //  }
 }
 
 function setBoardPosition(entry) {
@@ -645,6 +776,29 @@ async function loadRandomPosition() {
 }
 
 loadBtn.addEventListener('click', loadRandomPosition);
+
+clearDataBtn.addEventListener('click', () => {
+    localStorage.removeItem(FEN_CACHE_KEY);
+    localStorage.removeItem(EVAL_CACHE_KEY);
+    localStorage.removeItem(POSITION_STATS_KEY);
+
+    for (const key of Object.keys(fenCache)) {
+        delete fenCache[key];
+    }
+    for (const key of Object.keys(evalCache)) {
+        delete evalCache[key];
+    }
+    for (const key of Object.keys(positionStats)) {
+        delete positionStats[key];
+    }
+
+    cachedPositions = null;
+    renderStats(currentPositionUrl);
+    userMoveDisplay.style.display = 'none';
+    userMoveDisplay.classList.remove('correct', 'incorrect');
+    userMoveDisplay.textContent = '';
+});
+
 loadRandomPosition();
 </script>
 </body>
