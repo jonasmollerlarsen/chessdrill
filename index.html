@@ -571,10 +571,7 @@ async function getFenFromLichessUrl(lichessUrl) {
         const initialFen = fenHeaderMatch ? fenHeaderMatch[1] : undefined;
 
         const pgnGame = new Chess();
-        const loaded = pgnGame.loadPgn(body);
-        if (!loaded) {
-            throw new Error('Could not parse Lichess export as JSON or PGN');
-        }
+        pgnGame.loadPgn(body);
 
         chess = new Chess(initialFen);
         moves = pgnGame.history();
