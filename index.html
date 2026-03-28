@@ -277,8 +277,8 @@
 </section>
 
 <p class="attribution">
-    This site uses <a href="https://github.com/justinfagnani/chessboard-element?tab=License-1-ov-file" target="_blank" rel="noopener noreferrer">chessboard-element</a>.
-    Copyright © 2019 Justin Fagnani
+    This site uses <a href="https://github.com/justinfagnani/chessboard-element?tab=License-1-ov-file" target="_blank" rel="noopener noreferrer">chessboard-element</a> (Copyright © 2019 Justin Fagnani)
+    and <a href="https://github.com/nmrugg/stockfish.js" target="_blank" rel="noopener noreferrer">Stockfish.js</a> (<a href="https://github.com/official-stockfish/Stockfish/blob/master/Copying.txt" target="_blank" rel="noopener noreferrer">GNU GPL v3</a>), based on <a href="https://stockfishchess.org/" target="_blank" rel="noopener noreferrer">Stockfish</a> by the Stockfish developers.
 </p>
 </main>
 
@@ -597,7 +597,7 @@ function setBoardPosition(entry) {
     userMoveDisplay.textContent = '';
 
     if (entry.text) {
-        textDisplay.textContent = `Text: ${entry.text}`;
+        textDisplay.textContent = `Theme: ${entry.text}`;
         textDisplay.style.display = 'block';
     } else {
         textDisplay.textContent = '';
@@ -606,7 +606,7 @@ function setBoardPosition(entry) {
 
     if (entry.url) {
         urlDisplay.href = entry.url;
-        urlDisplay.textContent = `URL: ${entry.url}`;
+        urlDisplay.textContent = `${entry.url}`;
         urlDisplay.style.display = 'block';
     } else {
         urlDisplay.removeAttribute('href');
