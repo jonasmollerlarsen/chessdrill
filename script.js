@@ -3,6 +3,7 @@ let board;
 let statusMsg;
 let nextBtn;
 let fetchBtn;
+let exportBtn;
 let clearBtn;
 let debugToggleBtn;
 let debugPanel;
@@ -31,6 +32,7 @@ function initDOMReferences() {
     statusMsg = document.getElementById('status-msg');
     nextBtn = document.getElementById('next-btn');
     fetchBtn = document.getElementById('fetch-btn');
+    exportBtn = document.getElementById('export-btn');
     clearBtn = document.getElementById('clear-btn');
     debugToggleBtn = document.getElementById('debug-toggle-btn');
     debugPanel = document.getElementById('debug-panel');
@@ -503,7 +505,7 @@ function updateStats() {
 }
 
 function attachEventListeners() {
-    if (!nextBtn || !clearBtn || !debugToggleBtn || !fetchBtn || !maxPositionsInput) {
+    if (!nextBtn || !clearBtn || !exportBtn || !debugToggleBtn || !fetchBtn || !maxPositionsInput) {
         console.warn('Some DOM elements not yet initialized');
         return;
     }
@@ -637,6 +639,35 @@ function attachEventListeners() {
         renderDebugInfo(null);
         setStatusTone('neutral');
         statusMsg.innerText = "Local data cleared.";
+    };
+
+    exportBtn.onclick = () => {
+        const blunders = getBlunders();
+        if (blunders.length === 0) {
+            alert('No puzzle data to export');
+            return;
+        }
+
+        const headers = ['ID', 'State', 'Attempts', 'Failures'];
+        const rows = blunders.map((p) => [
+            `"${p.id}"`,
+            p.state || 'unvetted',
+            Number(p.attempts || 0),
+            Number(p.failures || 0)
+        ]);
+
+        const csv = [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        const url = URL.createObjectURL(blob);
+        link.setAttribute('href', url);
+        link.setAttribute('download', `blunder-driller-${new Date().toISOString().split('T')[0]}.csv`);
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        setStatusTone('neutral');
+        statusMsg.innerText = `Exported ${blunders.length} puzzle(s)`;
     };
 
     debugToggleBtn.onclick = () => {
