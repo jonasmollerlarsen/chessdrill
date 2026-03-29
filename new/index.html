@@ -3,7 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Lichess Blunder Driller</title>
+    <title>Blunder Driller</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='75' font-size='75'>♟</text></svg>">
     <link rel="stylesheet" href="style.css">
     <!-- Load Dependencies -->
     <script type="module" src="https://unpkg.com/chessboard-element?module"></script>
@@ -11,31 +12,26 @@
 </head>
 <body>
     <header class="app-header">
-        <h1>Blunder Driller</h1>
+        <h1>♟ Blunder Driller ♟</h1>
     </header>
     <div class="container">
         <div id="board-area">
             <div id="turn-area">
-                <div id="turn-msg" aria-live="polite"></div>
+                <div id="status-msg" role="status" aria-live="polite">Enter username to start</div>
                 <div id="board-controls">
                     <button id="next-btn" type="button" disabled>Next Puzzle</button>
                 </div>
             </div>
             <chess-board id="board" draggable-pieces position="start"></chess-board>
-            <div id="status-msg" role="status" aria-live="polite">Enter username to start</div>
+            <div id="metadata-display" class="panel"></div>
         </div>
 
         <div class="sidebar">
-            <div id="data-controls" class="panel">
-                <input type="text" id="username" placeholder="Lichess Username" autocomplete="off" spellcheck="false">
-                <button id="fetch-btn" type="button">Fetch Games</button>
-                <button id="clear-btn" type="button">Clear Data</button>
+            <div id="positions-list" class="panel">
+                <div id="positions-content">-</div>
             </div>
             <div id="stats">
                 Puzzles Loaded: <span id="puzzle-count">0</span>
-            </div>
-            <div id="positions-list" class="panel">
-                <div id="positions-content">-</div>
             </div>
             <button id="debug-toggle-btn" type="button">Show Debug</button>
             <div id="debug-panel" class="panel">
@@ -43,6 +39,11 @@
                 <div>Correct Move: <span id="debug-correct-move">-</span></div>
                 <div>localStorage.blunders:</div>
                 <pre id="localstorage-state">[]</pre>
+            </div>
+            <div id="data-controls" class="panel">
+                <input type="text" id="username" placeholder="Lichess Username" autocomplete="off" spellcheck="false">
+                <button id="fetch-btn" type="button">Fetch Games</button>
+                <button id="clear-btn" type="button">Clear Data</button>
             </div>
         </div>
     </div>

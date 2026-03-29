@@ -1,19 +1,34 @@
-const board = document.getElementById('board');
-const turnMsg = document.getElementById('turn-msg');
-const statusMsg = document.getElementById('status-msg');
-const nextBtn = document.getElementById('next-btn');
-const fetchBtn = document.getElementById('fetch-btn');
-const clearBtn = document.getElementById('clear-btn');
-const debugToggleBtn = document.getElementById('debug-toggle-btn');
-const debugPanel = document.getElementById('debug-panel');
-const debugCorrectMoveEl = document.getElementById('debug-correct-move');
-const localstorageStateEl = document.getElementById('localstorage-state');
-const positionsContentEl = document.getElementById('positions-content');
+// DOM references - initialized on page load
+let board;
+let statusMsg;
+let nextBtn;
+let fetchBtn;
+let clearBtn;
+let debugToggleBtn;
+let debugPanel;
+let debugCorrectMoveEl;
+let localstorageStateEl;
+let positionsContentEl;
+let metadataDisplay;
 
 const DRILL_LIMIT = 3;
 
 let chess = new Chess();
 let currentPuzzle = null;
+
+function initDOMReferences() {
+    board = document.getElementById('board');
+    statusMsg = document.getElementById('status-msg');
+    nextBtn = document.getElementById('next-btn');
+    fetchBtn = document.getElementById('fetch-btn');
+    clearBtn = document.getElementById('clear-btn');
+    debugToggleBtn = document.getElementById('debug-toggle-btn');
+    debugPanel = document.getElementById('debug-panel');
+    debugCorrectMoveEl = document.getElementById('debug-correct-move');
+    localstorageStateEl = document.getElementById('localstorage-state');
+    positionsContentEl = document.getElementById('positions-content');
+    metadataDisplay = document.getElementById('metadata-display');
+}
 
 function normalizeUci(move) {
     return String(move || '').trim().toLowerCase().replace(/[^a-h1-8qrbn]/g, '');
@@ -83,8 +98,20 @@ function renderCurrentPositionInfo(puzzle) {
     renderAllPositions(puzzle.id);
 }
 
+function setBoardLastMoveHighlight(fromSquare, toSquare) {
+    if (!board || !board._highlightedSquares) return;
+
+    board._highlightedSquares.clear();
+    if (fromSquare) board._highlightedSquares.add(fromSquare);
+    if (toSquare) board._highlightedSquares.add(toSquare);
+    board.requestUpdate('_highlightedSquares');
+}
+
 // Initialize app
 window.onload = () => {
+    initDOMReferences();
+    attachEventListeners();
+    
     const limited = setBlunders(getBlunders());
     if (limited.length === 0) {
         localStorage.removeItem('blunders');
@@ -103,64 +130,7 @@ window.onload = () => {
     }
 };
 
-fetchBtn.onclick = async () => {
-    const user = document.getElementById('username').value.trim();
-    if (!user) return alert("Enter a username");
-    localStorage.setItem('username', user);
-    
-    statusMsg.innerText = "Fetching and analyzing games...";
-    try {
-        const response = await fetch(`https://lichess.org/api/games/user/${encodeURIComponent(user)}?max=20&moves=true&evals=true&analysed=true`, {
-            headers: { 'Accept': 'application/x-ndjson' }
-        });
-
-        if (!response.ok) {
-            throw new Error(`Lichess API error: ${response.status}`);
-        }
-        if (!response.body) {
-            throw new Error('No response stream available');
-        }
-        
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        let blunders = getBlunders();
-        const existingIds = new Set(blunders.map((p) => p.id));
-        let remainder = '';
-
-        while (true) {
-            const { value, done } = await reader.read();
-            if (done) {
-                remainder += decoder.decode();
-                const tail = remainder.trim();
-                if (tail) {
-                    const gameData = JSON.parse(tail);
-                    extractBlunders(gameData, user, blunders, existingIds);
-                }
-                break;
-            }
-
-            const chunk = remainder + decoder.decode(value, { stream: true });
-            const lines = chunk.split('\n');
-            remainder = lines.pop() || '';
-
-            for (const line of lines) {
-                const trimmed = line.trim();
-                if (!trimmed) continue;
-                const gameData = JSON.parse(trimmed);
-                extractBlunders(gameData, user, blunders, existingIds);
-            }
-        }
-
-        blunders = setBlunders(blunders);
-        updateStats();
-        renderDebugInfo(currentPuzzle);
-        statusMsg.innerText = "Sync complete!";
-        nextBtn.disabled = false;
-    } catch (e) {
-        console.error(e);
-        statusMsg.innerText = `Error: ${formatErrorMessage(e)}`;
-    }
-};
+/* Event listeners initialized in window.onload */
 
 function extractBlunders(game, username, storage, existingIds) {
     const whiteName = game?.players?.white?.user?.name?.toLowerCase?.();
@@ -179,6 +149,8 @@ function extractBlunders(game, username, storage, existingIds) {
     const gameFormat = game.speed || 'unknown';
     const whitePlayer = game?.players?.white?.user?.name || 'Unknown';
     const blackPlayer = game?.players?.black?.user?.name || 'Unknown';
+    let previousMoveFrom = '';
+    let previousMoveTo = '';
     
     analysis.forEach((moveEval, i) => {
         const turn = i % 2 === 0 ? 'white' : 'black';
@@ -195,6 +167,8 @@ function extractBlunders(game, username, storage, existingIds) {
                     fen: tempGame.fen(),
                     bestMove: normalizeUci(moveEval.best),
                     color: turn,
+                    previousMoveFrom,
+                    previousMoveTo,
                     attempts: 0,
                     failures: 0,
                     gameDate,
@@ -206,7 +180,9 @@ function extractBlunders(game, username, storage, existingIds) {
             }
         }
 
-        tempGame.move(move);
+        const parsedMove = tempGame.move(move);
+        previousMoveFrom = parsedMove?.from || '';
+        previousMoveTo = parsedMove?.to || '';
     });
 }
 
@@ -229,7 +205,7 @@ function selectWeightedPuzzle() {
 function loadNextPuzzle() {
     currentPuzzle = selectWeightedPuzzle();
     if (!currentPuzzle) {
-        turnMsg.innerText = '';
+        setBoardLastMoveHighlight(null, null);
         statusMsg.innerText = "No puzzles loaded yet.";
         renderCurrentPositionInfo(null);
         renderDebugInfo(null);
@@ -239,23 +215,29 @@ function loadNextPuzzle() {
     chess.load(currentPuzzle.fen);
     board.setAttribute('position', currentPuzzle.fen);
     board.setAttribute('orientation', currentPuzzle.color);
+    setBoardLastMoveHighlight(currentPuzzle.previousMoveFrom, currentPuzzle.previousMoveTo);
     renderCurrentPositionInfo(currentPuzzle);
     renderDebugInfo(currentPuzzle);
     const playerToMove = currentPuzzle.color === 'white' ? 'White' : 'Black';
     const metadata = `${currentPuzzle.gameFormat} (${currentPuzzle.gameDate}) | ${currentPuzzle.whitePlayer} vs ${currentPuzzle.blackPlayer}`;
     const lichessUrl = getPuzzleLichessUrl(currentPuzzle);
 
-    turnMsg.innerText = `${playerToMove} to move`;
     statusMsg.innerHTML = '';
+    const turnDiv = document.createElement('div');
+    turnDiv.innerText = `${playerToMove} to move`;
+    
+    statusMsg.append(turnDiv);
+    
+    metadataDisplay.innerHTML = '';
     const link = document.createElement('a');
     link.href = lichessUrl;
     link.target = '_blank';
     link.rel = 'noopener noreferrer';
     link.innerText = metadata;
-    statusMsg.append(link);
+    metadataDisplay.append(link);
 }
 
-board.addEventListener('drop', (e) => {
+function boardDropHandler(e) {
     if (!currentPuzzle) {
         statusMsg.innerText = "Load a puzzle first.";
         return 'snapback';
@@ -279,11 +261,11 @@ board.addEventListener('drop', (e) => {
     const playedMove = normalizeUci(`${move.from}${move.to}${move.promotion || ''}`);
 
     if (playedMove === currentPuzzle.bestMove) {
-        turnMsg.innerText = "Correct!";
+        statusMsg.innerText = "Correct!";
         blunders[pIdx].attempts++;
         blunders = setBlunders(blunders);
     } else {
-        turnMsg.innerText = `Wrong. Correct move: ${currentPuzzle.bestMove}`;
+        statusMsg.innerText = `Wrong. Correct move: ${currentPuzzle.bestMove}`;
         blunders[pIdx].attempts++;
         blunders[pIdx].failures++;
         blunders = setBlunders(blunders);
@@ -297,20 +279,7 @@ board.addEventListener('drop', (e) => {
     currentPuzzle = blunders[pIdx];
     renderCurrentPositionInfo(currentPuzzle);
     renderDebugInfo(currentPuzzle);
-});
-
-nextBtn.onclick = loadNextPuzzle;
-
-clearBtn.onclick = () => {
-    localStorage.removeItem('blunders');
-    currentPuzzle = null;
-    turnMsg.innerText = '';
-    updateStats();
-    renderCurrentPositionInfo(null);
-    renderDebugInfo(null);
-    statusMsg.innerText = "Local data cleared.";
-    nextBtn.disabled = true;
-};
+}
 
 function updateStats() {
     const count = getBlunders().slice(0, DRILL_LIMIT).length;
@@ -318,7 +287,89 @@ function updateStats() {
     nextBtn.disabled = count === 0;
 }
 
-debugToggleBtn.onclick = () => {
-    debugPanel.classList.toggle('visible');
-    debugToggleBtn.innerText = debugPanel.classList.contains('visible') ? 'Hide Debug' : 'Show Debug';
-};
+function attachEventListeners() {
+    if (!nextBtn || !clearBtn || !debugToggleBtn || !fetchBtn) {
+        console.warn('Some DOM elements not yet initialized');
+        return;
+    }
+
+    fetchBtn.onclick = async () => {
+        const user = document.getElementById('username').value.trim();
+        if (!user) return alert("Enter a username");
+        localStorage.setItem('username', user);
+        
+        statusMsg.innerText = "Fetching and analyzing games...";
+        try {
+            const response = await fetch(`https://lichess.org/api/games/user/${encodeURIComponent(user)}?max=20&moves=true&evals=true&analysed=true`, {
+                headers: { 'Accept': 'application/x-ndjson' }
+            });
+
+            if (!response.ok) {
+                throw new Error(`Lichess API error: ${response.status}`);
+            }
+            if (!response.body) {
+                throw new Error('No response stream available');
+            }
+            
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let blunders = getBlunders();
+            const existingIds = new Set(blunders.map((p) => p.id));
+            let remainder = '';
+
+            while (true) {
+                const { value, done } = await reader.read();
+                if (done) {
+                    remainder += decoder.decode();
+                    const tail = remainder.trim();
+                    if (tail) {
+                        const gameData = JSON.parse(tail);
+                        extractBlunders(gameData, user, blunders, existingIds);
+                    }
+                    break;
+                }
+
+                const chunk = remainder + decoder.decode(value, { stream: true });
+                const lines = chunk.split('\n');
+                remainder = lines.pop() || '';
+
+                for (const line of lines) {
+                    const trimmed = line.trim();
+                    if (!trimmed) continue;
+                    const gameData = JSON.parse(trimmed);
+                    extractBlunders(gameData, user, blunders, existingIds);
+                }
+            }
+
+            blunders = setBlunders(blunders);
+            updateStats();
+            renderDebugInfo(currentPuzzle);
+            statusMsg.innerText = "Sync complete!";
+            nextBtn.disabled = false;
+        } catch (e) {
+            console.error(e);
+            statusMsg.innerText = `Error: ${formatErrorMessage(e)}`;
+        }
+    };
+
+    nextBtn.onclick = loadNextPuzzle;
+
+    clearBtn.onclick = () => {
+        localStorage.removeItem('blunders');
+        currentPuzzle = null;
+        setBoardLastMoveHighlight(null, null);
+        updateStats();
+        renderCurrentPositionInfo(null);
+        renderDebugInfo(null);
+        statusMsg.innerText = "Local data cleared.";
+        nextBtn.disabled = true;
+    };
+
+    debugToggleBtn.onclick = () => {
+        debugPanel.classList.toggle('visible');
+        debugToggleBtn.innerText = debugPanel.classList.contains('visible') ? 'Hide Debug' : 'Show Debug';
+    };
+
+    // Attach board event listener
+    board.addEventListener('drop', boardDropHandler);
+}
