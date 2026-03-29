@@ -1,44 +1,89 @@
 body {
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    background: #2c3e50;
-    color: white;
+    background: radial-gradient(circle at 12% 12%, #304e72 0%, #23384f 45%, #172634 100%);
+    color: #edf4ff;
     display: flex;
+    flex-direction: column;
+    align-items: center;
     justify-content: center;
-    padding: 20px;
+    min-height: 100vh;
+    margin: 0;
+    padding: 16px;
+}
+
+.app-header {
+    width: 100%;
+    max-width: 980px;
+    margin-bottom: 12px;
+}
+
+.app-header h1 {
+    margin: 0;
+    font-size: 1.55rem;
+    letter-spacing: 0.04em;
+    font-weight: 700;
+    color: #f3f8ff;
 }
 
 .container {
     display: flex;
-    gap: 30px;
-    max-width: 900px;
+    gap: 18px;
+    max-width: 980px;
     width: 100%;
 }
 
 #board-area {
     flex: 2;
     max-width: 500px;
+    background: rgba(9, 16, 24, 0.26);
+    border: 1px solid rgba(207, 226, 255, 0.14);
+    border-radius: 12px;
+    padding: 12px;
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.28);
+}
+
+#turn-area {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+#turn-msg {
+    text-align: center;
+    min-height: 1.4em;
+    font-size: 1.2rem;
+    font-weight: 700;
+    line-height: 1.2;
+    color: #f3f8ff;
+    flex: 1;
 }
 
 #board-controls {
-    margin-top: 8px;
+    margin: 0;
+    text-align: right;
 }
 
 #board-controls button {
-    margin-bottom: 0;
+    margin: 0;
 }
 
 .sidebar {
     flex: 1;
-    background: #34495e;
-    padding: 20px;
-    border-radius: 8px;
+    background: rgba(9, 16, 24, 0.3);
+    border: 1px solid rgba(207, 226, 255, 0.14);
+    padding: 14px;
+    border-radius: 12px;
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.28);
 }
 
 .panel {
-    background: rgba(0, 0, 0, 0.18);
-    border-radius: 6px;
-    padding: 12px;
-    margin-top: 12px;
+    background: rgba(0, 0, 0, 0.16);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 8px;
+    padding: 10px;
+    margin-top: 10px;
     font-size: 0.92rem;
     line-height: 1.5;
 }
@@ -89,24 +134,37 @@ body {
 
 input {
     width: 100%;
-    padding: 10px;
-    margin-bottom: 10px;
-    border-radius: 4px;
-    border: none;
+    padding: 8px 10px;
+    margin-bottom: 8px;
+    border-radius: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    background: rgba(8, 14, 20, 0.48);
+    color: #f7fbff;
 }
 
 button {
-    width: 100%;
-    padding: 10px;
-    margin-bottom: 10px;
+    width: fit-content;
+    max-width: 100%;
+    padding: 5px 8px;
+    margin-bottom: 6px;
     cursor: pointer;
-    background: #3498db;
+    background: linear-gradient(180deg, #4ea8f3 0%, #2d82cf 100%);
     color: white;
     border: none;
-    border-radius: 4px;
+    border-radius: 5px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    letter-spacing: 0.015em;
+    text-transform: uppercase;
+    transition: transform 120ms ease, filter 120ms ease;
 }
 
-button:disabled { background: #7f8c8d; }
+button:hover:not(:disabled) {
+    filter: brightness(1.08);
+    transform: translateY(-1px);
+}
+
+button:disabled { background: #6d7885; }
 
 #data-controls {
     margin-top: 0;
@@ -128,4 +186,30 @@ button:disabled { background: #7f8c8d; }
 #debug-panel.visible {
     display: block;
 }
-#status-msg { margin-top: 15px; text-align: center; font-weight: bold; }
+#status-msg {
+    margin-top: 10px;
+    text-align: center;
+    min-height: 1.3em;
+    font-size: 0.92rem;
+    font-weight: 500;
+    opacity: 0.95;
+}
+
+#status-msg a {
+    color: #bfe3ff;
+}
+
+#status-msg a:hover {
+    color: #e4f3ff;
+}
+
+@media (max-width: 900px) {
+    .container {
+        flex-direction: column;
+        gap: 12px;
+    }
+
+    #board-area {
+        max-width: 100%;
+    }
+}

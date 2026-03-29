@@ -1,4 +1,5 @@
 const board = document.getElementById('board');
+const turnMsg = document.getElementById('turn-msg');
 const statusMsg = document.getElementById('status-msg');
 const nextBtn = document.getElementById('next-btn');
 const fetchBtn = document.getElementById('fetch-btn');
@@ -31,6 +32,19 @@ function setBlunders(blunders) {
     const trimmed = blunders.slice(0, DRILL_LIMIT);
     localStorage.setItem('blunders', JSON.stringify(trimmed));
     return trimmed;
+}
+
+function getPuzzleLichessUrl(puzzle) {
+    const id = String(puzzle?.id || '');
+    const dash = id.lastIndexOf('-');
+    if (dash <= 0) return '#';
+
+    const gameId = id.slice(0, dash);
+    const plyIndex = Number(id.slice(dash + 1));
+    if (!gameId || !Number.isFinite(plyIndex)) return '#';
+
+    const orientation = puzzle?.color === 'black' ? 'black' : 'white';
+    return `https://lichess.org/${gameId}/${orientation}#${plyIndex + 1}`;
 }
 
 function renderDebugInfo(puzzle) {
@@ -215,6 +229,7 @@ function selectWeightedPuzzle() {
 function loadNextPuzzle() {
     currentPuzzle = selectWeightedPuzzle();
     if (!currentPuzzle) {
+        turnMsg.innerText = '';
         statusMsg.innerText = "No puzzles loaded yet.";
         renderCurrentPositionInfo(null);
         renderDebugInfo(null);
@@ -227,8 +242,17 @@ function loadNextPuzzle() {
     renderCurrentPositionInfo(currentPuzzle);
     renderDebugInfo(currentPuzzle);
     const playerToMove = currentPuzzle.color === 'white' ? 'White' : 'Black';
-    const source = `${playerToMove} to move | ${currentPuzzle.gameFormat} (${currentPuzzle.gameDate}) | ${currentPuzzle.whitePlayer} vs ${currentPuzzle.blackPlayer}`;
-    statusMsg.innerText = source;
+    const metadata = `${currentPuzzle.gameFormat} (${currentPuzzle.gameDate}) | ${currentPuzzle.whitePlayer} vs ${currentPuzzle.blackPlayer}`;
+    const lichessUrl = getPuzzleLichessUrl(currentPuzzle);
+
+    turnMsg.innerText = `${playerToMove} to move`;
+    statusMsg.innerHTML = '';
+    const link = document.createElement('a');
+    link.href = lichessUrl;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    link.innerText = metadata;
+    statusMsg.append(link);
 }
 
 board.addEventListener('drop', (e) => {
@@ -255,11 +279,11 @@ board.addEventListener('drop', (e) => {
     const playedMove = normalizeUci(`${move.from}${move.to}${move.promotion || ''}`);
 
     if (playedMove === currentPuzzle.bestMove) {
-        statusMsg.innerText = "Correct!";
+        turnMsg.innerText = "Correct!";
         blunders[pIdx].attempts++;
         blunders = setBlunders(blunders);
     } else {
-        statusMsg.innerText = "Wrong. Try again!";
+        turnMsg.innerText = `Wrong. Correct move: ${currentPuzzle.bestMove}`;
         blunders[pIdx].attempts++;
         blunders[pIdx].failures++;
         blunders = setBlunders(blunders);
@@ -280,6 +304,7 @@ nextBtn.onclick = loadNextPuzzle;
 clearBtn.onclick = () => {
     localStorage.removeItem('blunders');
     currentPuzzle = null;
+    turnMsg.innerText = '';
     updateStats();
     renderCurrentPositionInfo(null);
     renderDebugInfo(null);

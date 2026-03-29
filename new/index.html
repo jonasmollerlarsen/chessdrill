@@ -10,17 +10,22 @@
     <script defer src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
 </head>
 <body>
+    <header class="app-header">
+        <h1>Blunder Driller</h1>
+    </header>
     <div class="container">
         <div id="board-area">
+            <div id="turn-area">
+                <div id="turn-msg" aria-live="polite"></div>
+                <div id="board-controls">
+                    <button id="next-btn" type="button" disabled>Next Puzzle</button>
+                </div>
+            </div>
             <chess-board id="board" draggable-pieces position="start"></chess-board>
             <div id="status-msg" role="status" aria-live="polite">Enter username to start</div>
-            <div id="board-controls">
-                <button id="next-btn" type="button" disabled>Next Puzzle</button>
-            </div>
         </div>
 
         <div class="sidebar">
-            <h2>Blunder Driller</h2>
             <div id="data-controls" class="panel">
                 <input type="text" id="username" placeholder="Lichess Username" autocomplete="off" spellcheck="false">
                 <button id="fetch-btn" type="button">Fetch Games</button>
