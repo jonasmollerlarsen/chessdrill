@@ -39,10 +39,50 @@ function formatErrorMessage(error) {
     return String(error || 'Unknown error');
 }
 
+const PUZZLE_STATES = {
+    ENABLED: 'enabled',
+    UNVETTED: 'unvetted',
+    DISABLED: 'disabled'
+};
+
+function isPuzzleActive(puzzle) {
+    return puzzle?.state !== PUZZLE_STATES.DISABLED;
+}
+
+function normalizePuzzleState(puzzle) {
+    const state = puzzle?.state;
+    if (state === PUZZLE_STATES.ENABLED || state === PUZZLE_STATES.UNVETTED || state === PUZZLE_STATES.DISABLED) {
+        return state;
+    }
+
+    // Backward compatibility for older boolean-enabled records.
+    if (puzzle?.enabled === false) return PUZZLE_STATES.DISABLED;
+    return PUZZLE_STATES.ENABLED;
+}
+
+function getNextPuzzleState(state) {
+    if (state === PUZZLE_STATES.UNVETTED) return PUZZLE_STATES.ENABLED;
+    if (state === PUZZLE_STATES.ENABLED) return PUZZLE_STATES.DISABLED;
+    return PUZZLE_STATES.UNVETTED;
+}
+
+function getPuzzleStateLabel(state) {
+    if (state === PUZZLE_STATES.UNVETTED) return '?';
+    if (state === PUZZLE_STATES.DISABLED) return 'X';
+    return '\u2713';
+}
+
+function getPuzzleStateTitle(state) {
+    if (state === PUZZLE_STATES.ENABLED) return 'Vetted and enabled';
+    if (state === PUZZLE_STATES.UNVETTED) return 'Not yet vetted';
+    return 'Disabled';
+}
+
 function normalizePuzzleEntry(puzzle) {
+    const state = normalizePuzzleState(puzzle);
     return {
         ...puzzle,
-        enabled: puzzle?.enabled !== false
+        state
     };
 }
 
@@ -86,7 +126,7 @@ function renderAllPositions(currentId) {
 
     // Calculate weights and total for probability display
     const weights = blunders.map((p) => {
-        if (p.enabled === false) return 0;
+        if (!isPuzzleActive(p)) return 0;
         return (Number(p.failures || 0) + 1) / (Number(p.attempts || 0) + 1);
     });
     const totalWeight = weights.reduce((a, b) => a + b, 0);
@@ -97,10 +137,13 @@ function renderAllPositions(currentId) {
         const correct = Math.max(0, attempts - failures);
         const accuracy = attempts > 0 ? `${Math.round((correct / attempts) * 100)}%` : '-';
         const probability = totalWeight > 0 ? Math.round((weights[idx] / totalWeight) * 100) : 0;
-        const checkedAttr = p.enabled === false ? '' : 'checked';
+        const state = normalizePuzzleState(p);
+        const stateLabel = getPuzzleStateLabel(state);
+        const stateTitle = getPuzzleStateTitle(state);
         const activeClass = currentId === p.id ? ' active' : '';
-        const disabledClass = p.enabled === false ? ' disabled' : '';
-        return `<div class="position-row${activeClass}${disabledClass}"><label class="position-toggle"><input class="position-enabled-toggle" type="checkbox" data-puzzle-id="${p.id}" ${checkedAttr}><span class="position-row-text">${p.id}: ${correct} / ${attempts} ${accuracy} [${probability}%]</span></label></div>`;
+        const disabledClass = !isPuzzleActive(p) ? ' disabled' : '';
+        const unvettedClass = state === PUZZLE_STATES.UNVETTED ? ' unvetted' : '';
+        return `<div class="position-row${activeClass}${disabledClass}${unvettedClass}"><div class="position-toggle"><button class="position-state-toggle" type="button" data-puzzle-id="${p.id}" data-puzzle-state="${state}" title="${stateTitle}" aria-label="${stateTitle}">${stateLabel}</button><span class="position-row-text">${p.id}: ${correct} / ${attempts} ${accuracy} [${probability}%]</span></div></div>`;
     }).join('');
     positionsContentEl.innerHTML = rows;
 }
@@ -184,7 +227,7 @@ function extractBlunders(game, username, storage, existingIds) {
                     color: turn,
                     previousMoveFrom,
                     previousMoveTo,
-                    enabled: true,
+                    state: PUZZLE_STATES.UNVETTED,
                     attempts: 0,
                     failures: 0,
                     gameDate,
@@ -203,7 +246,7 @@ function extractBlunders(game, username, storage, existingIds) {
 }
 
 function selectWeightedPuzzle() {
-    const puzzles = getBlunders().slice(0, DRILL_LIMIT).filter(p => p.enabled !== false);
+    const puzzles = getBlunders().slice(0, DRILL_LIMIT).filter(isPuzzleActive);
     if (!puzzles.length) return null;
 
     // Weight formula: (Failures + 1) / (Total Attempts + 1)
@@ -300,7 +343,7 @@ function boardDropHandler(e) {
 function updateStats() {
     const blunders = getBlunders().slice(0, DRILL_LIMIT);
     const count = blunders.length;
-    const enabledCount = blunders.filter((p) => p.enabled !== false).length;
+    const enabledCount = blunders.filter(isPuzzleActive).length;
     document.getElementById('puzzle-count').innerText = count;
     nextBtn.disabled = enabledCount === 0;
 }
@@ -369,10 +412,12 @@ function attachEventListeners() {
         }
     };
 
-    positionsContentEl.addEventListener('change', (event) => {
-        const toggle = event.target;
-        if (!(toggle instanceof HTMLInputElement)) return;
-        if (!toggle.classList.contains('position-enabled-toggle')) return;
+    positionsContentEl.addEventListener('click', (event) => {
+        const target = event.target;
+        if (!(target instanceof HTMLElement)) return;
+
+        const toggle = target.closest('.position-state-toggle');
+        if (!(toggle instanceof HTMLButtonElement)) return;
 
         const puzzleId = toggle.dataset.puzzleId;
         if (!puzzleId) return;
@@ -381,23 +426,10 @@ function attachEventListeners() {
         const puzzle = blunders.find((p) => p.id === puzzleId);
         if (!puzzle) return;
 
-        puzzle.enabled = toggle.checked;
-        const saved = setBlunders(blunders);
+        const previousState = normalizePuzzleState(puzzle);
+        puzzle.state = getNextPuzzleState(previousState);
+        setBlunders(blunders);
         updateStats();
-
-        if (currentPuzzle && currentPuzzle.id === puzzleId && !toggle.checked) {
-            const hasEnabled = saved.some((p) => p.enabled !== false);
-            if (hasEnabled) {
-                loadNextPuzzle();
-            } else {
-                currentPuzzle = null;
-                setBoardLastMoveHighlight(null, null);
-                statusMsg.innerText = 'All puzzles are disabled. Re-enable one to continue.';
-                renderCurrentPositionInfo(null);
-                renderDebugInfo(null);
-            }
-            return;
-        }
 
         renderCurrentPositionInfo(currentPuzzle);
         renderDebugInfo(currentPuzzle);

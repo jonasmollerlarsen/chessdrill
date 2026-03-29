@@ -33,17 +33,17 @@
             <div id="stats">
                 Puzzles Loaded: <span id="puzzle-count">0</span>
             </div>
+            <div id="data-controls" class="panel">
+                <input type="text" id="username" placeholder="Lichess Username" autocomplete="off" spellcheck="false">
+                <button id="fetch-btn" type="button">Fetch Games</button>
+                <button id="clear-btn" type="button">Clear Data</button>
+            </div>
             <button id="debug-toggle-btn" type="button">Show localStorage</button>
             <div id="debug-panel" class="panel">
                 <h3>Debug</h3>
                 <div>Correct Move: <span id="debug-correct-move">-</span></div>
                 <div>localStorage.blunders:</div>
                 <pre id="localstorage-state">[]</pre>
-            </div>
-            <div id="data-controls" class="panel">
-                <input type="text" id="username" placeholder="Lichess Username" autocomplete="off" spellcheck="false">
-                <button id="fetch-btn" type="button">Fetch Games</button>
-                <button id="clear-btn" type="button">Clear Data</button>
             </div>
         </div>
     </div>
