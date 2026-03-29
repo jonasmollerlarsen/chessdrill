@@ -66,6 +66,14 @@ body {
     gap: 2px;
 }
 
+#status-msg.status-correct {
+    color: #8ee49a;
+}
+
+#status-msg.status-wrong {
+    color: #ff8f8f;
+}
+
 .sidebar {
     flex: 1;
     background: linear-gradient(135deg, rgba(20, 40, 65, 0.4) 0%, rgba(10, 25, 45, 0.4) 100%);
@@ -102,6 +110,7 @@ body {
     display: flex;
     align-items: center;
     padding: 4px 0;
+    cursor: pointer;
     border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 }
 
@@ -210,7 +219,7 @@ button {
     font-size: 0.78rem;
     font-weight: 600;
     letter-spacing: 0.015em;
-    text-transform: uppercase;
+    text-transform: none;
     transition: transform 120ms ease, filter 120ms ease;
 }
 
@@ -251,6 +260,16 @@ button:disabled { background: #6d7885; }
 
 #board-controls button {
     margin: 0;
+}
+
+#next-btn.pending-move {
+    background: #6d7885;
+    filter: saturate(0.5);
+}
+
+#next-btn.pending-move:hover {
+    filter: saturate(0.5);
+    transform: none;
 }
 
 @media (max-width: 900px) {
