@@ -241,6 +241,9 @@ function renderAllPositions(currentId) {
         return;
     }
 
+    // Sort by date (newest first)
+    blunders.sort((a, b) => (Number(b.gameTimestamp || 0)) - (Number(a.gameTimestamp || 0)));
+
     // Calculate weights and total for probability display
     const weights = blunders.map((p) => {
         if (!isPuzzleActive(p)) return 0;
@@ -260,7 +263,8 @@ function renderAllPositions(currentId) {
         const activeClass = currentId === p.id ? ' active' : '';
         const disabledClass = !isPuzzleActive(p) ? ' disabled' : '';
         const unvettedClass = state === PUZZLE_STATES.UNVETTED ? ' unvetted' : '';
-        return `<div class="position-row${activeClass}${disabledClass}${unvettedClass}" data-puzzle-id="${p.id}"><div class="position-toggle"><button class="position-state-toggle" type="button" data-puzzle-id="${p.id}" data-puzzle-state="${state}" title="${stateTitle}" aria-label="${stateTitle}">${stateLabel}</button><span class="position-row-text">${p.id}: ${correct} / ${attempts} ${accuracy} [${probability}%]</span></div></div>`;
+        const dateDisplay = p.gameDate || '-';
+        return `<div class="position-row${activeClass}${disabledClass}${unvettedClass}" data-puzzle-id="${p.id}"><div class="position-toggle"><button class="position-state-toggle" type="button" data-puzzle-id="${p.id}" data-puzzle-state="${state}" title="${stateTitle}" aria-label="${stateTitle}">${stateLabel}</button><span class="position-row-text">${dateDisplay} | ${p.id}: ${correct} / ${attempts} ${accuracy} [${probability}%]</span></div></div>`;
     }).join('');
     positionsContentEl.innerHTML = rows;
 }
@@ -359,6 +363,7 @@ function extractBlunders(game, username, storage, existingIds) {
     const tempGame = new Chess();
     const moveList = (game.moves || '').split(' ').filter(Boolean);
     const analysis = Array.isArray(game.analysis) ? game.analysis : [];
+    const gameTimestamp = game.createdAt || 0;
     const gameDate = game.createdAt ? new Date(game.createdAt).toLocaleDateString() : 'unknown';
     const gameFormat = game.speed || 'unknown';
     const whitePlayer = game?.players?.white?.user?.name || 'Unknown';
@@ -386,6 +391,7 @@ function extractBlunders(game, username, storage, existingIds) {
                     state: PUZZLE_STATES.UNVETTED,
                     attempts: 0,
                     failures: 0,
+                    gameTimestamp,
                     gameDate,
                     gameFormat,
                     whitePlayer,
