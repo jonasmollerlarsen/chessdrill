@@ -7,6 +7,7 @@ let clearBtn;
 let debugToggleBtn;
 let debugPanel;
 let debugCorrectMoveEl;
+let localstorageFullnessEl;
 let localstorageStateEl;
 let positionsContentEl;
 let metadataDisplay;
@@ -25,6 +26,7 @@ function initDOMReferences() {
     debugToggleBtn = document.getElementById('debug-toggle-btn');
     debugPanel = document.getElementById('debug-panel');
     debugCorrectMoveEl = document.getElementById('debug-correct-move');
+    localstorageFullnessEl = document.getElementById('localstorage-fullness');
     localstorageStateEl = document.getElementById('localstorage-state');
     positionsContentEl = document.getElementById('positions-content');
     metadataDisplay = document.getElementById('metadata-display');
@@ -78,6 +80,33 @@ function getPuzzleStateTitle(state) {
     return 'Disabled';
 }
 
+function formatBytes(bytes) {
+    const value = Number(bytes || 0);
+    if (value < 1024) return `${value} B`;
+    if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
+    return `${(value / (1024 * 1024)).toFixed(2)} MB`;
+}
+
+function getLocalStorageUsageBytes() {
+    let total = 0;
+    for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i) || '';
+        const value = localStorage.getItem(key) || '';
+        // JS strings are UTF-16; estimate 2 bytes per code unit for quota use.
+        total += (key.length + value.length) * 2;
+    }
+    return total;
+}
+
+function renderLocalStorageFullness() {
+    if (!localstorageFullnessEl) return;
+
+    const usedBytes = getLocalStorageUsageBytes();
+    const quotaBytes = 5 * 1024 * 1024;
+    const percent = Math.min(100, Math.round((usedBytes / quotaBytes) * 100));
+    localstorageFullnessEl.innerText = `${formatBytes(usedBytes)} / ${formatBytes(quotaBytes)} (${percent}%)`;
+}
+
 function normalizePuzzleEntry(puzzle) {
     const state = normalizePuzzleState(puzzle);
     return {
@@ -113,6 +142,7 @@ function getPuzzleLichessUrl(puzzle) {
 
 function renderDebugInfo(puzzle) {
     debugCorrectMoveEl.innerText = puzzle?.bestMove || '-';
+    renderLocalStorageFullness();
     const raw = localStorage.getItem('blunders');
     localstorageStateEl.innerText = raw || '[]';
 }
