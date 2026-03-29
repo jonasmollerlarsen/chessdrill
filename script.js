@@ -39,12 +39,21 @@ function formatErrorMessage(error) {
     return String(error || 'Unknown error');
 }
 
+function normalizePuzzleEntry(puzzle) {
+    return {
+        ...puzzle,
+        enabled: puzzle?.enabled !== false
+    };
+}
+
 function getBlunders() {
-    return JSON.parse(localStorage.getItem('blunders') || '[]');
+    const parsed = JSON.parse(localStorage.getItem('blunders') || '[]');
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map(normalizePuzzleEntry);
 }
 
 function setBlunders(blunders) {
-    const trimmed = blunders.slice(0, DRILL_LIMIT);
+    const trimmed = blunders.slice(0, DRILL_LIMIT).map(normalizePuzzleEntry);
     localStorage.setItem('blunders', JSON.stringify(trimmed));
     return trimmed;
 }
@@ -76,7 +85,10 @@ function renderAllPositions(currentId) {
     }
 
     // Calculate weights and total for probability display
-    const weights = blunders.map(p => (Number(p.failures || 0) + 1) / (Number(p.attempts || 0) + 1));
+    const weights = blunders.map((p) => {
+        if (p.enabled === false) return 0;
+        return (Number(p.failures || 0) + 1) / (Number(p.attempts || 0) + 1);
+    });
     const totalWeight = weights.reduce((a, b) => a + b, 0);
 
     const rows = blunders.map((p, idx) => {
@@ -84,8 +96,11 @@ function renderAllPositions(currentId) {
         const failures = Number(p.failures || 0);
         const correct = Math.max(0, attempts - failures);
         const accuracy = attempts > 0 ? `${Math.round((correct / attempts) * 100)}%` : '-';
-        const probability = Math.round((weights[idx] / totalWeight) * 100);
-        return `<div class="position-row${currentId === p.id ? ' active' : ''}">${p.id}: ${correct} / ${attempts} ${accuracy} [${probability}%]</div>`;
+        const probability = totalWeight > 0 ? Math.round((weights[idx] / totalWeight) * 100) : 0;
+        const checkedAttr = p.enabled === false ? '' : 'checked';
+        const activeClass = currentId === p.id ? ' active' : '';
+        const disabledClass = p.enabled === false ? ' disabled' : '';
+        return `<div class="position-row${activeClass}${disabledClass}"><label class="position-toggle"><input class="position-enabled-toggle" type="checkbox" data-puzzle-id="${p.id}" ${checkedAttr}><span class="position-row-text">${p.id}: ${correct} / ${attempts} ${accuracy} [${probability}%]</span></label></div>`;
     }).join('');
     positionsContentEl.innerHTML = rows;
 }
@@ -169,6 +184,7 @@ function extractBlunders(game, username, storage, existingIds) {
                     color: turn,
                     previousMoveFrom,
                     previousMoveTo,
+                    enabled: true,
                     attempts: 0,
                     failures: 0,
                     gameDate,
@@ -187,7 +203,7 @@ function extractBlunders(game, username, storage, existingIds) {
 }
 
 function selectWeightedPuzzle() {
-    const puzzles = getBlunders().slice(0, DRILL_LIMIT);
+    const puzzles = getBlunders().slice(0, DRILL_LIMIT).filter(p => p.enabled !== false);
     if (!puzzles.length) return null;
 
     // Weight formula: (Failures + 1) / (Total Attempts + 1)
@@ -282,9 +298,11 @@ function boardDropHandler(e) {
 }
 
 function updateStats() {
-    const count = getBlunders().slice(0, DRILL_LIMIT).length;
+    const blunders = getBlunders().slice(0, DRILL_LIMIT);
+    const count = blunders.length;
+    const enabledCount = blunders.filter((p) => p.enabled !== false).length;
     document.getElementById('puzzle-count').innerText = count;
-    nextBtn.disabled = count === 0;
+    nextBtn.disabled = enabledCount === 0;
 }
 
 function attachEventListeners() {
@@ -345,12 +363,45 @@ function attachEventListeners() {
             updateStats();
             renderDebugInfo(currentPuzzle);
             statusMsg.innerText = "Sync complete!";
-            nextBtn.disabled = false;
         } catch (e) {
             console.error(e);
             statusMsg.innerText = `Error: ${formatErrorMessage(e)}`;
         }
     };
+
+    positionsContentEl.addEventListener('change', (event) => {
+        const toggle = event.target;
+        if (!(toggle instanceof HTMLInputElement)) return;
+        if (!toggle.classList.contains('position-enabled-toggle')) return;
+
+        const puzzleId = toggle.dataset.puzzleId;
+        if (!puzzleId) return;
+
+        const blunders = getBlunders();
+        const puzzle = blunders.find((p) => p.id === puzzleId);
+        if (!puzzle) return;
+
+        puzzle.enabled = toggle.checked;
+        const saved = setBlunders(blunders);
+        updateStats();
+
+        if (currentPuzzle && currentPuzzle.id === puzzleId && !toggle.checked) {
+            const hasEnabled = saved.some((p) => p.enabled !== false);
+            if (hasEnabled) {
+                loadNextPuzzle();
+            } else {
+                currentPuzzle = null;
+                setBoardLastMoveHighlight(null, null);
+                statusMsg.innerText = 'All puzzles are disabled. Re-enable one to continue.';
+                renderCurrentPositionInfo(null);
+                renderDebugInfo(null);
+            }
+            return;
+        }
+
+        renderCurrentPositionInfo(currentPuzzle);
+        renderDebugInfo(currentPuzzle);
+    });
 
     nextBtn.onclick = loadNextPuzzle;
 
@@ -367,7 +418,7 @@ function attachEventListeners() {
 
     debugToggleBtn.onclick = () => {
         debugPanel.classList.toggle('visible');
-        debugToggleBtn.innerText = debugPanel.classList.contains('visible') ? 'Hide Debug' : 'Show Debug';
+        debugToggleBtn.innerText = debugPanel.classList.contains('visible') ? 'Hide' : 'Show localStorage';
     };
 
     // Attach board event listener

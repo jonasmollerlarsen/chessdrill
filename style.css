@@ -66,17 +66,6 @@ body {
     gap: 2px;
 }
 
-#status-msg a {
-    color: #bfe3ff;
-    font-size: 0.9rem;
-    font-weight: 500;
-    display: block;
-}
-
-#status-msg a:hover {
-    color: #e4f3ff;
-}
-
 .sidebar {
     flex: 1;
     background: linear-gradient(135deg, rgba(20, 40, 65, 0.4) 0%, rgba(10, 25, 45, 0.4) 100%);
@@ -110,8 +99,36 @@ body {
 }
 
 .position-row {
+    display: flex;
+    align-items: center;
     padding: 4px 0;
     border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.position-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+}
+
+.position-row-text {
+    flex: 1;
+}
+
+.position-row.disabled .position-row-text {
+    opacity: 0.55;
+    text-decoration: line-through;
+}
+
+#positions-content input[type="checkbox"] {
+    width: auto;
+    margin: 0;
+    padding: 0;
+    border: none;
+    background: transparent;
+    backdrop-filter: none;
+    accent-color: #4ea8f3;
 }
 
 .position-row:last-child {
