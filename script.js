@@ -11,8 +11,10 @@ let localstorageFullnessEl;
 let localstorageStateEl;
 let positionsContentEl;
 let metadataDisplay;
+let maxPositionsInput;
 
-const DRILL_LIMIT = 3;
+const DEFAULT_POSITION_LIMIT = 3;
+const MAX_POSITION_LIMIT_KEY = 'maxPositions';
 
 let chess = new Chess();
 let currentPuzzle = null;
@@ -37,7 +39,25 @@ function initDOMReferences() {
     localstorageStateEl = document.getElementById('localstorage-state');
     positionsContentEl = document.getElementById('positions-content');
     metadataDisplay = document.getElementById('metadata-display');
+    maxPositionsInput = document.getElementById('max-positions');
     ensureBoardHighlightStyles();
+}
+
+function parsePositionLimit(value) {
+    const parsed = Number.parseInt(String(value || ''), 10);
+    if (!Number.isFinite(parsed) || parsed <= 0) return DEFAULT_POSITION_LIMIT;
+    return parsed;
+}
+
+function getPositionLimit() {
+    const stored = localStorage.getItem(MAX_POSITION_LIMIT_KEY);
+    return parsePositionLimit(stored);
+}
+
+function setPositionLimit(value) {
+    const normalized = parsePositionLimit(value);
+    localStorage.setItem(MAX_POSITION_LIMIT_KEY, String(normalized));
+    return normalized;
 }
 
 function ensureBoardHighlightStyles() {
@@ -129,6 +149,10 @@ function getPuzzleStateTitle(state) {
     return 'Disabled';
 }
 
+function getPuzzleStateTooltip(state) {
+    return `Cycle puzzle state. Current: ${getPuzzleStateTitle(state)}`;
+}
+
 function formatBytes(bytes) {
     const value = Number(bytes || 0);
     if (value < 1024) return `${value} B`;
@@ -171,7 +195,7 @@ function getBlunders() {
 }
 
 function setBlunders(blunders) {
-    const trimmed = blunders.slice(0, DRILL_LIMIT).map(normalizePuzzleEntry);
+    const trimmed = blunders.slice(0, getPositionLimit()).map(normalizePuzzleEntry);
     localStorage.setItem('blunders', JSON.stringify(trimmed));
     return trimmed;
 }
@@ -211,7 +235,7 @@ function updateNextPuzzleButtonAppearance() {
 }
 
 function renderAllPositions(currentId) {
-    const blunders = getBlunders().slice(0, DRILL_LIMIT);
+    const blunders = getBlunders().slice(0, getPositionLimit());
     if (blunders.length === 0) {
         positionsContentEl.innerText = 'No positions loaded';
         return;
@@ -232,7 +256,7 @@ function renderAllPositions(currentId) {
         const probability = totalWeight > 0 ? Math.round((weights[idx] / totalWeight) * 100) : 0;
         const state = normalizePuzzleState(p);
         const stateLabel = getPuzzleStateLabel(state);
-        const stateTitle = getPuzzleStateTitle(state);
+        const stateTitle = getPuzzleStateTooltip(state);
         const activeClass = currentId === p.id ? ' active' : '';
         const disabledClass = !isPuzzleActive(p) ? ' disabled' : '';
         const unvettedClass = state === PUZZLE_STATES.UNVETTED ? ' unvetted' : '';
@@ -243,7 +267,7 @@ function renderAllPositions(currentId) {
 
 function loadPuzzleById(puzzleId) {
     if (!puzzleId) return;
-    const blunders = getBlunders().slice(0, DRILL_LIMIT);
+    const blunders = getBlunders().slice(0, getPositionLimit());
     const puzzle = blunders.find((p) => p.id === puzzleId);
     if (!puzzle) return;
 
@@ -296,6 +320,10 @@ function setBoardLastMoveHighlight(fromSquare, toSquare) {
 window.onload = () => {
     initDOMReferences();
     attachEventListeners();
+
+    if (maxPositionsInput) {
+        maxPositionsInput.value = String(getPositionLimit());
+    }
     
     const limited = setBlunders(getBlunders());
     if (limited.length === 0) {
@@ -374,7 +402,7 @@ function extractBlunders(game, username, storage, existingIds) {
 }
 
 function selectWeightedPuzzle() {
-    const puzzles = getBlunders().slice(0, DRILL_LIMIT).filter(isPuzzleActive);
+    const puzzles = getBlunders().slice(0, getPositionLimit()).filter(isPuzzleActive);
     if (!puzzles.length) return null;
 
     // Weight formula: (Failures + 1) / (Total Attempts + 1)
@@ -462,22 +490,46 @@ function boardDropHandler(e) {
 }
 
 function updateStats() {
-    const blunders = getBlunders().slice(0, DRILL_LIMIT);
+    const blunders = getBlunders().slice(0, getPositionLimit());
     const count = blunders.length;
     document.getElementById('puzzle-count').innerText = count;
     updateNextPuzzleButtonAppearance();
 }
 
 function attachEventListeners() {
-    if (!nextBtn || !clearBtn || !debugToggleBtn || !fetchBtn) {
+    if (!nextBtn || !clearBtn || !debugToggleBtn || !fetchBtn || !maxPositionsInput) {
         console.warn('Some DOM elements not yet initialized');
         return;
     }
+
+    maxPositionsInput.onchange = () => {
+        const normalized = setPositionLimit(maxPositionsInput.value);
+        maxPositionsInput.value = String(normalized);
+
+        const trimmed = setBlunders(getBlunders());
+        if (trimmed.length === 0) {
+            localStorage.removeItem('blunders');
+            currentPuzzle = null;
+            hasAttemptedMoveOnCurrentPuzzle = false;
+            setBoardLastMoveHighlight(null, null);
+            clearCurrentMoveHighlight();
+            setStatusTone('neutral');
+            statusMsg.innerText = 'No puzzles loaded yet.';
+        } else if (currentPuzzle && !trimmed.some((p) => p.id === currentPuzzle.id)) {
+            loadPuzzleById(trimmed[0].id);
+        }
+
+        updateStats();
+        renderCurrentPositionInfo(currentPuzzle);
+        renderDebugInfo(currentPuzzle);
+    };
 
     fetchBtn.onclick = async () => {
         const user = document.getElementById('username').value.trim();
         if (!user) return alert("Enter a username");
         localStorage.setItem('username', user);
+        const selectedLimit = setPositionLimit(maxPositionsInput.value);
+        maxPositionsInput.value = String(selectedLimit);
         
         setStatusTone('neutral');
         statusMsg.innerText = "Fetching and analyzing games...";
@@ -525,6 +577,7 @@ function attachEventListeners() {
 
             blunders = setBlunders(blunders);
             updateStats();
+            renderCurrentPositionInfo(currentPuzzle);
             renderDebugInfo(currentPuzzle);
             setStatusTone('neutral');
             statusMsg.innerText = "Sync complete!";
@@ -582,7 +635,11 @@ function attachEventListeners() {
 
     debugToggleBtn.onclick = () => {
         debugPanel.classList.toggle('visible');
-        debugToggleBtn.innerText = debugPanel.classList.contains('visible') ? 'Hide' : 'Show localStorage';
+        const isVisible = debugPanel.classList.contains('visible');
+        debugToggleBtn.innerText = isVisible ? 'Hide' : 'Show localStorage';
+        debugToggleBtn.title = isVisible
+            ? 'Hide debug details including localStorage contents'
+            : 'Show debug details including localStorage contents';
     };
 
     // Attach board event listener
