@@ -117,6 +117,8 @@ body {
     font-size: 0.85rem;
     line-height: 1.6;
     font-family: Consolas, Monaco, 'Courier New', monospace;
+    max-height: 400px;
+    overflow-y: auto;
 }
 
 .position-row {
