@@ -4,9 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Blunder Driller</title>
+    <meta name="description" content="Review and drill your recent Lichess blunder positions.">
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='75' font-size='75'>♟</text></svg>">
     <link rel="stylesheet" href="style.css">
-    <!-- Load Dependencies -->
     <script type="module" src="https://unpkg.com/chessboard-element?module"></script>
     <script defer src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
 </head>
@@ -14,8 +14,8 @@
     <header class="app-header">
         <h1>♟ Blunder Driller ♟</h1>
     </header>
-    <div class="container">
-        <div id="board-area">
+    <main class="container">
+        <section id="board-area" aria-label="Puzzle board area">
             <div id="turn-area">
                 <div id="status-msg" role="status" aria-live="polite">Enter username to start</div>
                 <div id="board-controls">
@@ -24,9 +24,9 @@
             </div>
             <chess-board id="board" draggable-pieces position="start"></chess-board>
             <div id="metadata-display" class="panel"></div>
-        </div>
+        </section>
 
-        <div class="sidebar">
+        <aside class="sidebar" aria-label="Puzzle controls and data">
             <div id="positions-list" class="panel">
                 <div id="positions-content">-</div>
             </div>
@@ -34,22 +34,26 @@
                 # Puzzles: <span id="puzzle-count">0</span>
             </div>
             <div id="data-controls" class="panel">
-                <input type="text" id="username" placeholder="Lichess Username" autocomplete="off" spellcheck="false">
+                <input type="text" id="username" placeholder="Lichess Username" autocomplete="off" spellcheck="false" aria-label="Lichess Username">
                 <input type="number" id="max-positions" min="1" step="1" value="3" title="Maximum number of puzzle positions to keep locally" aria-label="Maximum positions to keep">
                 <button id="fetch-btn" type="button" title="Fetch recent analyzed games and import blunder positions">Import Positions</button>
                 <button id="export-btn" type="button" title="Export puzzle data (ID, state, attempts, failures) to a file">Export Data</button>
                 <button id="clear-btn" type="button" title="Delete all locally stored puzzle data">Delete Data</button>
             </div>
             <button id="debug-toggle-btn" type="button" title="Show debug details including localStorage contents">Show localStorage</button>
-            <div id="debug-panel" class="panel">
+            <div id="debug-panel" class="panel" aria-label="Debug data">
                 <h3>Debug</h3>
                 <div>Correct Move: <span id="debug-correct-move">-</span></div>
                 <div>localStorage fullness: <span id="localstorage-fullness">-</span></div>
                 <div>localStorage.blunders:</div>
                 <pre id="localstorage-state">[]</pre>
             </div>
-        </div>
-    </div>
+        </aside>
+    </main>
+    <noscript>This app requires JavaScript to run.</noscript>
+    <script defer src="storage.js"></script>    <script defer src="board.js"></script>
+    <script defer src="puzzle-state.js"></script>
+    <script defer src="format.js"></script>    <script defer src="lichess.js"></script>
     <script defer src="script.js"></script>
 </body>
 </html>

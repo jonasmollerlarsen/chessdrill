@@ -14,284 +14,247 @@ let positionsContentEl;
 let metadataDisplay;
 let maxPositionsInput;
 
-const DEFAULT_POSITION_LIMIT = 3;
-const MAX_POSITION_LIMIT_KEY = 'maxPositions';
+const storage = window.blunderStorage;
+if (!storage) {
+    throw new Error('blunderStorage is not available. Ensure storage.js is loaded before script.js.');
+}
 
 let chess = new Chess();
 let currentPuzzle = null;
 let hasAttemptedMoveOnCurrentPuzzle = false;
-let boardHighlightStylesEl = null;
-let previousMoveHighlightSquares = [];
-let currentMoveHighlightSquares = [];
+// Extract module references
+const board_module = window.boardModule;
+const puzzleState_module = window.puzzleStateModule;
+const format_module = window.formatModule;
+const lichess_module = window.lichessModule;
 
-const PREVIOUS_MOVE_HIGHLIGHT_COLOR = 'rgba(46, 204, 113, 0.75)';
-const CURRENT_MOVE_HIGHLIGHT_COLOR = 'rgba(241, 196, 15, 0.85)';
-
-function initDOMReferences() {
-    board = document.getElementById('board');
-    statusMsg = document.getElementById('status-msg');
-    nextBtn = document.getElementById('next-btn');
-    fetchBtn = document.getElementById('fetch-btn');
-    exportBtn = document.getElementById('export-btn');
-    clearBtn = document.getElementById('clear-btn');
-    debugToggleBtn = document.getElementById('debug-toggle-btn');
-    debugPanel = document.getElementById('debug-panel');
-    debugCorrectMoveEl = document.getElementById('debug-correct-move');
-    localstorageFullnessEl = document.getElementById('localstorage-fullness');
-    localstorageStateEl = document.getElementById('localstorage-state');
-    positionsContentEl = document.getElementById('positions-content');
-    metadataDisplay = document.getElementById('metadata-display');
-    maxPositionsInput = document.getElementById('max-positions');
-    ensureBoardHighlightStyles();
+if (!board_module || !puzzleState_module || !format_module || !lichess_module) {
+    throw new Error('Module dependencies not loaded. Ensure board.js, puzzle-state.js, format.js, and lichess.js are loaded before script.js.');
 }
 
-function parsePositionLimit(value) {
-    const parsed = Number.parseInt(String(value || ''), 10);
-    if (!Number.isFinite(parsed) || parsed <= 0) return DEFAULT_POSITION_LIMIT;
-    return parsed;
-}
+// Make puzzle states and functions available
+const APP_PUZZLE_STATES = puzzleState_module.PUZZLE_STATES;
 
-function getPositionLimit() {
-    const stored = localStorage.getItem(MAX_POSITION_LIMIT_KEY);
-    return parsePositionLimit(stored);
-}
+// Initialize app.
+window.onload = () => {
+    initDOMReferences();
+    attachEventListeners();
 
-function setPositionLimit(value) {
-    const normalized = parsePositionLimit(value);
-    localStorage.setItem(MAX_POSITION_LIMIT_KEY, String(normalized));
-    return normalized;
-}
-
-function ensureBoardHighlightStyles() {
-    if (boardHighlightStylesEl) return;
-    boardHighlightStylesEl = document.createElement('style');
-    boardHighlightStylesEl.id = 'board-square-highlights';
-    document.head.append(boardHighlightStylesEl);
-}
-
-function normalizeSquare(square) {
-    const value = String(square || '').toLowerCase();
-    return /^[a-h][1-8]$/.test(value) ? value : null;
-}
-
-function makeSquareHighlightRule(square, color) {
-    return `#board::part(${square}) { box-shadow: inset 0 0 3px 3px ${color}; }`;
-}
-
-function renderBoardHighlights() {
-    ensureBoardHighlightStyles();
-    if (!boardHighlightStylesEl) return;
-
-    const rules = [];
-    for (const square of previousMoveHighlightSquares) {
-        rules.push(makeSquareHighlightRule(square, PREVIOUS_MOVE_HIGHLIGHT_COLOR));
+    if (maxPositionsInput) {
+        maxPositionsInput.value = String(storage.getPositionLimit());
     }
-    for (const square of currentMoveHighlightSquares) {
-        rules.push(makeSquareHighlightRule(square, CURRENT_MOVE_HIGHLIGHT_COLOR));
+
+    const limited = setBlunders(getBlunders());
+    if (limited.length === 0) {
+        storage.removeBlunders();
     }
-    boardHighlightStylesEl.textContent = rules.join('\n');
-}
 
-function setCurrentMoveHighlight(fromSquare, toSquare) {
-    const squares = [normalizeSquare(fromSquare), normalizeSquare(toSquare)].filter(Boolean);
-    currentMoveHighlightSquares = squares;
-    renderBoardHighlights();
-}
+    const storedUsername = storage.getUsername();
+    if (storedUsername) {
+        document.getElementById('username').value = storedUsername;
+    }
 
-function clearCurrentMoveHighlight() {
-    currentMoveHighlightSquares = [];
-    renderBoardHighlights();
-}
-
-function normalizeUci(move) {
-    return String(move || '').trim().toLowerCase().replace(/[^a-h1-8qrbn]/g, '');
-}
-
-function formatErrorMessage(error) {
-    if (error instanceof Error && error.message) return error.message;
-    return String(error || 'Unknown error');
-}
-
-const PUZZLE_STATES = {
-    ENABLED: 'enabled',
-    UNVETTED: 'unvetted',
-    DISABLED: 'disabled'
+    updateStats();
+    if (limited.length > 0) {
+        loadNextPuzzle();
+    } else {
+        setStatusTone('neutral');
+        statusMsg.innerText = "Enter username to start";
+        renderCurrentPositionInfo(null);
+        renderDebugInfo(null);
+    }
 };
 
-function isPuzzleActive(puzzle) {
-    return puzzle?.state !== PUZZLE_STATES.DISABLED;
-}
-
-function normalizePuzzleState(puzzle) {
-    const state = puzzle?.state;
-    if (state === PUZZLE_STATES.ENABLED || state === PUZZLE_STATES.UNVETTED || state === PUZZLE_STATES.DISABLED) {
-        return state;
+// Attach UI events to focused handlers.
+function attachEventListeners() {
+    if (!nextBtn || !clearBtn || !exportBtn || !debugToggleBtn || !fetchBtn || !maxPositionsInput) {
+        throw new Error('Required DOM elements are not initialized');
     }
 
-    // Backward compatibility for older boolean-enabled records.
-    if (puzzle?.enabled === false) return PUZZLE_STATES.DISABLED;
-    return PUZZLE_STATES.ENABLED;
+    maxPositionsInput.onchange = handleMaxPositionsChange;
+    fetchBtn.onclick = handleFetchPositions;
+    positionsContentEl.addEventListener('click', handlePositionsListClick);
+
+    nextBtn.onclick = loadNextPuzzle;
+    clearBtn.onclick = handleClearData;
+    exportBtn.onclick = handleExportData;
+    debugToggleBtn.onclick = handleDebugToggle;
+
+    board.addEventListener('drop', boardSelectedMoveHandler);
 }
 
-function getNextPuzzleState(state) {
-    if (state === PUZZLE_STATES.UNVETTED) return PUZZLE_STATES.ENABLED;
-    if (state === PUZZLE_STATES.ENABLED) return PUZZLE_STATES.DISABLED;
-    return PUZZLE_STATES.UNVETTED;
-}
+// Handle max position changes and trim local puzzle storage.
+function handleMaxPositionsChange() {
+    const normalized = storage.setPositionLimit(maxPositionsInput.value);
+    maxPositionsInput.value = String(normalized);
 
-function getPuzzleStateLabel(state) {
-    if (state === PUZZLE_STATES.UNVETTED) return '?';
-    if (state === PUZZLE_STATES.DISABLED) return 'X';
-    return '\u2713';
-}
-
-function getPuzzleStateTitle(state) {
-    if (state === PUZZLE_STATES.ENABLED) return 'Vetted and enabled';
-    if (state === PUZZLE_STATES.UNVETTED) return 'Not yet vetted';
-    return 'Disabled';
-}
-
-function getPuzzleStateTooltip(state) {
-    return `Cycle puzzle state. Current: ${getPuzzleStateTitle(state)}`;
-}
-
-function formatBytes(bytes) {
-    const value = Number(bytes || 0);
-    if (value < 1024) return `${value} B`;
-    if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
-    return `${(value / (1024 * 1024)).toFixed(2)} MB`;
-}
-
-function getLocalStorageUsageBytes() {
-    let total = 0;
-    for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i) || '';
-        const value = localStorage.getItem(key) || '';
-        // JS strings are UTF-16; estimate 2 bytes per code unit for quota use.
-        total += (key.length + value.length) * 2;
+    const trimmed = setBlunders(getBlunders());
+    if (trimmed.length === 0) {
+        storage.removeBlunders();
+        currentPuzzle = null;
+        hasAttemptedMoveOnCurrentPuzzle = false;
+        board_module.setBoardLastMoveHighlight(null, null);
+        board_module.clearCurrentMoveHighlight();
+        setStatusTone('neutral');
+        statusMsg.innerText = 'No puzzles loaded yet.';
+    } else if (currentPuzzle && !trimmed.some((p) => p.id === currentPuzzle.id)) {
+        loadPuzzleById(trimmed[0].id);
     }
-    return total;
+
+    refreshPuzzleUi();
 }
 
-function renderLocalStorageFullness() {
-    if (!localstorageFullnessEl) return;
+// Fetch games from Lichess and merge extracted blunders into storage.
+async function handleFetchPositions() {
+    const user = document.getElementById('username').value.trim();
+    if (!user) return alert("Enter a username");
 
-    const usedBytes = getLocalStorageUsageBytes();
-    const quotaBytes = 5 * 1024 * 1024;
-    const percent = Math.min(100, Math.round((usedBytes / quotaBytes) * 100));
-    localstorageFullnessEl.innerText = `${formatBytes(usedBytes)} / ${formatBytes(quotaBytes)} (${percent}%)`;
+    storage.setUsername(user);
+    const selectedLimit = storage.setPositionLimit(maxPositionsInput.value);
+    maxPositionsInput.value = String(selectedLimit);
+
+    setStatusTone('neutral');
+    statusMsg.innerText = "Fetching and analyzing games...";
+    try {
+        let blunders = getBlunders();
+        const existingIds = new Set(blunders.map((p) => p.id));
+
+        await lichess_module.fetchGamesFromLichess(user, (gameData) => {
+            extractBlunders(gameData, user, blunders, existingIds);
+        });
+
+        blunders = setBlunders(blunders);
+        refreshPuzzleUi();
+        setStatusTone('neutral');
+        statusMsg.innerText = "Sync complete!";
+    } catch (e) {
+        console.error(e);
+        setStatusTone('neutral');
+        statusMsg.innerText = `Error: ${format_module.formatErrorMessage(e)}`;
+    }
 }
 
-function normalizePuzzleEntry(puzzle) {
-    const state = normalizePuzzleState(puzzle);
-    return {
-        ...puzzle,
-        state
-    };
-}
+// Handle clicks in the position list for state toggles and row selection.
+function handlePositionsListClick(event) {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) return;
 
-function getBlunders() {
-    const parsed = JSON.parse(localStorage.getItem('blunders') || '[]');
-    if (!Array.isArray(parsed)) return [];
-    return parsed.map(normalizePuzzleEntry);
-}
+    const toggle = target.closest('.position-state-toggle');
+    if (toggle instanceof HTMLButtonElement) {
+        const puzzleId = toggle.dataset.puzzleId;
+        if (!puzzleId) return;
 
-function setBlunders(blunders) {
-    const trimmed = blunders.slice(0, getPositionLimit()).map(normalizePuzzleEntry);
-    localStorage.setItem('blunders', JSON.stringify(trimmed));
-    return trimmed;
-}
+        const blunders = getBlunders();
+        const puzzle = blunders.find((p) => p.id === puzzleId);
+        if (!puzzle) return;
 
-function getPuzzleLichessUrl(puzzle) {
-    const id = String(puzzle?.id || '');
-    const dash = id.lastIndexOf('-');
-    if (dash <= 0) return '#';
-
-    const gameId = id.slice(0, dash);
-    const plyIndex = Number(id.slice(dash + 1));
-    if (!gameId || !Number.isFinite(plyIndex)) return '#';
-
-    const orientation = puzzle?.color === 'black' ? 'black' : 'white';
-    const queriedPly = Math.max(1, plyIndex);
-    return `https://lichess.org/${gameId}/${orientation}#${queriedPly}`;
-}
-
-function renderDebugInfo(puzzle) {
-    debugCorrectMoveEl.innerText = puzzle?.bestMove || '-';
-    renderLocalStorageFullness();
-    const raw = localStorage.getItem('blunders');
-    localstorageStateEl.innerText = raw || '[]';
-}
-
-function setStatusTone(tone = 'neutral') {
-    if (!statusMsg) return;
-    statusMsg.classList.remove('status-correct', 'status-wrong');
-    if (tone === 'correct') statusMsg.classList.add('status-correct');
-    if (tone === 'wrong') statusMsg.classList.add('status-wrong');
-}
-
-function updateNextPuzzleButtonAppearance() {
-    if (!nextBtn) return;
-    nextBtn.disabled = false;
-    nextBtn.classList.toggle('pending-move', !hasAttemptedMoveOnCurrentPuzzle);
-}
-
-function renderAllPositions(currentId) {
-    const blunders = getBlunders().slice(0, getPositionLimit());
-    if (blunders.length === 0) {
-        positionsContentEl.innerText = 'No positions loaded';
+        const previousState = puzzleState_module.normalizePuzzleState(puzzle);
+        puzzle.state = puzzleState_module.getNextPuzzleState(previousState);
+        setBlunders(blunders);
+        refreshPuzzleUi();
         return;
     }
 
-    // Sort by date (newest first)
-    blunders.sort((a, b) => (Number(b.gameTimestamp || 0)) - (Number(a.gameTimestamp || 0)));
+    const row = target.closest('.position-row');
+    if (!(row instanceof HTMLElement)) return;
+    const puzzleId = row.dataset.puzzleId;
+    if (!puzzleId) return;
 
-    // Calculate weights and total for probability display
-    const weights = blunders.map((p) => {
-        if (!isPuzzleActive(p)) return 0;
-        return (Number(p.failures || 0) + 1) / (Number(p.attempts || 0) + 1);
-    });
-    const totalWeight = weights.reduce((a, b) => a + b, 0);
-
-    const rows = blunders.map((p, idx) => {
-        const attempts = Number(p.attempts || 0);
-        const failures = Number(p.failures || 0);
-        const correct = Math.max(0, attempts - failures);
-        const accuracy = attempts > 0 ? `${Math.round((correct / attempts) * 100)}%` : '-';
-        const probability = totalWeight > 0 ? Math.round((weights[idx] / totalWeight) * 100) : 0;
-        const state = normalizePuzzleState(p);
-        const stateLabel = getPuzzleStateLabel(state);
-        const stateTitle = getPuzzleStateTooltip(state);
-        const activeClass = currentId === p.id ? ' active' : '';
-        const disabledClass = !isPuzzleActive(p) ? ' disabled' : '';
-        const unvettedClass = state === PUZZLE_STATES.UNVETTED ? ' unvetted' : '';
-        const dateDisplay = p.gameDate || '-';
-        return `<div class="position-row${activeClass}${disabledClass}${unvettedClass}" data-puzzle-id="${p.id}"><div class="position-toggle"><button class="position-state-toggle" type="button" data-puzzle-id="${p.id}" data-puzzle-state="${state}" title="${stateTitle}" aria-label="${stateTitle}">${stateLabel}</button><span class="position-row-text">${dateDisplay} | ${p.id}: ${correct} / ${attempts} ${accuracy} [${probability}%]</span></div></div>`;
-    }).join('');
-    positionsContentEl.innerHTML = rows;
+    loadPuzzleById(puzzleId);
 }
 
+// Clear local puzzle data and reset current puzzle UI.
+function handleClearData() {
+    storage.removeBlunders();
+    currentPuzzle = null;
+    hasAttemptedMoveOnCurrentPuzzle = false;
+    board_module.setBoardLastMoveHighlight(null, null);
+    refreshPuzzleUi();
+    setStatusTone('neutral');
+    statusMsg.innerText = "Local data cleared.";
+}
+
+// Export puzzle performance data to CSV.
+function handleExportData() {
+    const blunders = getBlunders();
+    if (blunders.length === 0) {
+        alert('No puzzle data to export');
+        return;
+    }
+
+    const headers = ['ID', 'State', 'Attempts', 'Failures'];
+    const rows = blunders.map((p) => [
+        `"${p.id}"`,
+        p.state || 'unvetted',
+        Number(p.attempts || 0),
+        Number(p.failures || 0)
+    ]);
+
+    const csv = [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `blunder-driller-${new Date().toISOString().split('T')[0]}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    setStatusTone('neutral');
+    statusMsg.innerText = `Exported ${blunders.length} puzzle(s)`;
+}
+
+// Toggle debug panel visibility and update control labels.
+function handleDebugToggle() {
+    debugPanel.classList.toggle('visible');
+    const isVisible = debugPanel.classList.contains('visible');
+    debugToggleBtn.innerText = isVisible ? 'Hide' : 'Show localStorage';
+    debugToggleBtn.title = isVisible
+        ? 'Hide debug details including localStorage contents'
+        : 'Show debug details including localStorage contents';
+}
+
+// Load the next weighted puzzle or reset the board if no puzzles are available.
+function loadNextPuzzle() {
+    const nextPuzzle = selectWeightedPuzzle();
+    if (!nextPuzzle) {
+        currentPuzzle = null;
+        hasAttemptedMoveOnCurrentPuzzle = false;
+        board_module.clearCurrentMoveHighlight();
+        updateNextPuzzleButtonAppearance();
+        board_module.setBoardLastMoveHighlight(null, null);
+        setStatusTone('neutral');
+        statusMsg.innerText = "No puzzles loaded yet.";
+        renderCurrentPositionInfo(null);
+        renderDebugInfo(null);
+        return;
+    }
+
+    loadPuzzleById(nextPuzzle.id);
+}
+
+// Load a puzzle by id and refresh board and metadata displays.
 function loadPuzzleById(puzzleId) {
     if (!puzzleId) return;
-    const blunders = getBlunders().slice(0, getPositionLimit());
+    const blunders = getBlunders().slice(0, storage.getPositionLimit());
     const puzzle = blunders.find((p) => p.id === puzzleId);
     if (!puzzle) return;
 
     currentPuzzle = puzzle;
     hasAttemptedMoveOnCurrentPuzzle = false;
-    clearCurrentMoveHighlight();
+    board_module.clearCurrentMoveHighlight();
     updateNextPuzzleButtonAppearance();
 
     chess.load(currentPuzzle.fen);
     board.setAttribute('position', currentPuzzle.fen);
     board.setAttribute('orientation', currentPuzzle.color);
-    setBoardLastMoveHighlight(currentPuzzle.previousMoveFrom, currentPuzzle.previousMoveTo);
+    board_module.setBoardLastMoveHighlight(currentPuzzle.previousMoveFrom, currentPuzzle.previousMoveTo);
     renderCurrentPositionInfo(currentPuzzle);
     renderDebugInfo(currentPuzzle);
 
     const playerToMove = currentPuzzle.color === 'white' ? 'White' : 'Black';
     const metadata = `${currentPuzzle.gameFormat} (${currentPuzzle.gameDate}) | ${currentPuzzle.whitePlayer} vs ${currentPuzzle.blackPlayer}`;
-    const lichessUrl = getPuzzleLichessUrl(currentPuzzle);
+    const lichessUrl = lichess_module.getPuzzleLichessUrl(currentPuzzle);
 
     setStatusTone('neutral');
     statusMsg.innerHTML = '';
@@ -308,142 +271,8 @@ function loadPuzzleById(puzzleId) {
     metadataDisplay.append(link);
 }
 
-function renderCurrentPositionInfo(puzzle) {
-    if (!puzzle) {
-        renderAllPositions(null);
-        return;
-    }
-    renderAllPositions(puzzle.id);
-}
-
-function setBoardLastMoveHighlight(fromSquare, toSquare) {
-    const squares = [normalizeSquare(fromSquare), normalizeSquare(toSquare)].filter(Boolean);
-    previousMoveHighlightSquares = squares;
-    renderBoardHighlights();
-}
-
-// Initialize app
-window.onload = () => {
-    initDOMReferences();
-    attachEventListeners();
-
-    if (maxPositionsInput) {
-        maxPositionsInput.value = String(getPositionLimit());
-    }
-    
-    const limited = setBlunders(getBlunders());
-    if (limited.length === 0) {
-        localStorage.removeItem('blunders');
-    }
-    const storedUsername = localStorage.getItem('username');
-    if (storedUsername) {
-        document.getElementById('username').value = storedUsername;
-    }
-    updateStats();
-    if (limited.length > 0) {
-        loadNextPuzzle();
-    } else {
-        setStatusTone('neutral');
-        statusMsg.innerText = "Enter username to start";
-        renderCurrentPositionInfo(null);
-        renderDebugInfo(null);
-    }
-};
-
-/* Event listeners initialized in window.onload */
-
-function extractBlunders(game, username, storage, existingIds) {
-    const whiteName = game?.players?.white?.user?.name?.toLowerCase?.();
-    const blackName = game?.players?.black?.user?.name?.toLowerCase?.();
-    const userLower = username.toLowerCase();
-
-    if (whiteName !== userLower && blackName !== userLower) {
-        return;
-    }
-
-    const isWhite = whiteName === userLower;
-    const tempGame = new Chess();
-    const moveList = (game.moves || '').split(' ').filter(Boolean);
-    const analysis = Array.isArray(game.analysis) ? game.analysis : [];
-    const gameTimestamp = game.createdAt || 0;
-    const gameDate = game.createdAt ? new Date(game.createdAt).toLocaleDateString() : 'unknown';
-    const gameFormat = game.speed || 'unknown';
-    const whitePlayer = game?.players?.white?.user?.name || 'Unknown';
-    const blackPlayer = game?.players?.black?.user?.name || 'Unknown';
-    let previousMoveFrom = '';
-    let previousMoveTo = '';
-    
-    analysis.forEach((moveEval, i) => {
-        const turn = i % 2 === 0 ? 'white' : 'black';
-        const isUserTurn = (isWhite && turn === 'white') || (!isWhite && turn === 'black');
-        const move = moveList[i];
-
-        if (!move) return;
-        
-        if (isUserTurn && moveEval.judgment?.name === "Blunder") {
-            const id = `${game.id}-${i}`;
-            if (!existingIds.has(id)) {
-                storage.push({
-                    id,
-                    fen: tempGame.fen(),
-                    bestMove: normalizeUci(moveEval.best),
-                    color: turn,
-                    previousMoveFrom,
-                    previousMoveTo,
-                    state: PUZZLE_STATES.UNVETTED,
-                    attempts: 0,
-                    failures: 0,
-                    gameTimestamp,
-                    gameDate,
-                    gameFormat,
-                    whitePlayer,
-                    blackPlayer
-                });
-                existingIds.add(id);
-            }
-        }
-
-        const parsedMove = tempGame.move(move);
-        previousMoveFrom = parsedMove?.from || '';
-        previousMoveTo = parsedMove?.to || '';
-    });
-}
-
-function selectWeightedPuzzle() {
-    const puzzles = getBlunders().slice(0, getPositionLimit()).filter(isPuzzleActive);
-    if (!puzzles.length) return null;
-
-    // Weight formula: (Failures + 1) / (Total Attempts + 1)
-    const weights = puzzles.map(p => (p.failures + 1) / (p.attempts + 1));
-    const totalWeight = weights.reduce((a, b) => a + b, 0);
-    let random = Math.random() * totalWeight;
-
-    for (let i = 0; i < puzzles.length; i++) {
-        if (random < weights[i]) return puzzles[i];
-        random -= weights[i];
-    }
-    return puzzles[0];
-}
-
-function loadNextPuzzle() {
-    const nextPuzzle = selectWeightedPuzzle();
-    if (!nextPuzzle) {
-        currentPuzzle = null;
-        hasAttemptedMoveOnCurrentPuzzle = false;
-        clearCurrentMoveHighlight();
-        updateNextPuzzleButtonAppearance();
-        setBoardLastMoveHighlight(null, null);
-        setStatusTone('neutral');
-        statusMsg.innerText = "No puzzles loaded yet.";
-        renderCurrentPositionInfo(null);
-        renderDebugInfo(null);
-        return;
-    }
-
-    loadPuzzleById(nextPuzzle.id);
-}
-
-function boardDropHandler(e) {
+// Validate and score a selected move against the current puzzle.
+function boardSelectedMoveHandler(e) {
     if (!currentPuzzle) {
         setStatusTone('neutral');
         statusMsg.innerText = "Load a puzzle first.";
@@ -453,7 +282,7 @@ function boardDropHandler(e) {
     const { source, target } = e.detail;
     if (source && target) {
         hasAttemptedMoveOnCurrentPuzzle = true;
-        setCurrentMoveHighlight(source, target);
+        board_module.setCurrentMoveHighlight(source, target);
         updateNextPuzzleButtonAppearance();
     }
     const move = chess.move({ from: source, to: target, promotion: 'q' });
@@ -472,7 +301,7 @@ function boardDropHandler(e) {
         return 'snapback';
     }
 
-    const playedMove = normalizeUci(`${move.from}${move.to}${move.promotion || ''}`);
+    const playedMove = format_module.normalizeUci(`${move.from}${move.to}${move.promotion || ''}`);
 
     if (playedMove === currentPuzzle.bestMove) {
         setStatusTone('correct');
@@ -497,188 +326,208 @@ function boardDropHandler(e) {
     renderDebugInfo(currentPuzzle);
 }
 
+// Extract blunder positions from one analyzed Lichess game.
+function extractBlunders(game, username, storage, existingIds) {
+    const whiteName = game?.players?.white?.user?.name?.toLowerCase?.();
+    const blackName = game?.players?.black?.user?.name?.toLowerCase?.();
+    const userLower = username.toLowerCase();
+
+    if (whiteName !== userLower && blackName !== userLower) {
+        return;
+    }
+
+    const isWhite = whiteName === userLower;
+    const tempGame = new Chess();
+    const moveList = (game.moves || '').split(' ').filter(Boolean);
+    const analysis = Array.isArray(game.analysis) ? game.analysis : [];
+    const gameTimestamp = game.createdAt || 0;
+    const gameDate = game.createdAt ? new Date(game.createdAt).toLocaleDateString() : 'unknown';
+    const gameFormat = game.speed || 'unknown';
+    const whitePlayer = game?.players?.white?.user?.name || 'Unknown';
+    const blackPlayer = game?.players?.black?.user?.name || 'Unknown';
+    let previousMoveFrom = '';
+    let previousMoveTo = '';
+
+    analysis.forEach((moveEval, i) => {
+        const turn = i % 2 === 0 ? 'white' : 'black';
+        const isUserTurn = (isWhite && turn === 'white') || (!isWhite && turn === 'black');
+        const move = moveList[i];
+
+        if (!move) return;
+
+        if (isUserTurn && moveEval.judgment?.name === "Blunder") {
+            const id = `${game.id}-${i}`;
+            if (!existingIds.has(id)) {
+                storage.push({
+                    id,
+                    fen: tempGame.fen(),
+                    bestMove: format_module.normalizeUci(moveEval.best),
+                    color: turn,
+                    previousMoveFrom,
+                    previousMoveTo,
+                    state: APP_PUZZLE_STATES.UNVETTED,
+                    attempts: 0,
+                    failures: 0,
+                    gameTimestamp,
+                    gameDate,
+                    gameFormat,
+                    whitePlayer,
+                    blackPlayer
+                });
+                existingIds.add(id);
+            }
+        }
+
+        const parsedMove = tempGame.move(move);
+        previousMoveFrom = parsedMove?.from || '';
+        previousMoveTo = parsedMove?.to || '';
+    });
+}
+
+// Select a puzzle using weighted random sampling by mistake rate.
+function selectWeightedPuzzle() {
+    const puzzles = getBlunders().slice(0, storage.getPositionLimit()).filter(puzzleState_module.isPuzzleActive);
+    if (!puzzles.length) return null;
+
+    const weights = puzzles.map((p) => (p.failures + 1) / (p.attempts + 1));
+    const totalWeight = weights.reduce((a, b) => a + b, 0);
+    let random = Math.random() * totalWeight;
+
+    for (let i = 0; i < puzzles.length; i++) {
+        if (random < weights[i]) return puzzles[i];
+        random -= weights[i];
+    }
+    return puzzles[0];
+}
+
+// Refresh all UI regions dependent on current puzzle/storage state.
+function refreshPuzzleUi() {
+    updateStats();
+    renderCurrentPositionInfo(currentPuzzle);
+    renderDebugInfo(currentPuzzle);
+}
+
+// Render the puzzle list with the current selection highlighted.
+function renderCurrentPositionInfo(puzzle) {
+    if (!puzzle) {
+        renderAllPositions(null);
+        return;
+    }
+    renderAllPositions(puzzle.id);
+}
+
+// Render puzzle rows with performance and probability metadata.
+function renderAllPositions(currentId) {
+    const blunders = getBlunders().slice(0, storage.getPositionLimit());
+    if (blunders.length === 0) {
+        positionsContentEl.innerText = 'No positions loaded';
+        return;
+    }
+
+    blunders.sort((a, b) => (Number(b.gameTimestamp || 0)) - (Number(a.gameTimestamp || 0)));
+
+    const weights = blunders.map((p) => {
+        if (!puzzleState_module.isPuzzleActive(p)) return 0;
+        return (Number(p.failures || 0) + 1) / (Number(p.attempts || 0) + 1);
+    });
+    const totalWeight = weights.reduce((a, b) => a + b, 0);
+
+    const rows = blunders.map((p, idx) => {
+        const attempts = Number(p.attempts || 0);
+        const failures = Number(p.failures || 0);
+        const correct = Math.max(0, attempts - failures);
+        const accuracy = attempts > 0 ? `${Math.round((correct / attempts) * 100)}%` : '-';
+        const probability = totalWeight > 0 ? Math.round((weights[idx] / totalWeight) * 100) : 0;
+        const state = puzzleState_module.normalizePuzzleState(p);
+        const stateLabel = puzzleState_module.getPuzzleStateLabel(state);
+        const stateTitle = puzzleState_module.getPuzzleStateTooltip(state);
+        const activeClass = currentId === p.id ? ' active' : '';
+        const disabledClass = !puzzleState_module.isPuzzleActive(p) ? ' disabled' : '';
+        const unvettedClass = state === APP_PUZZLE_STATES.UNVETTED ? ' unvetted' : '';
+        const dateDisplay = p.gameDate || '-';
+        return `<div class="position-row${activeClass}${disabledClass}${unvettedClass}" data-puzzle-id="${p.id}"><div class="position-toggle"><button class="position-state-toggle" type="button" data-puzzle-id="${p.id}" data-puzzle-state="${state}" title="${stateTitle}" aria-label="${stateTitle}">${stateLabel}</button><span class="position-row-text">${dateDisplay} | ${p.id}: ${correct} / ${attempts} ${accuracy} [${probability}%]</span></div></div>`;
+    }).join('');
+    positionsContentEl.innerHTML = rows;
+}
+
+// Render debug details for the selected puzzle.
+function renderDebugInfo(puzzle) {
+    debugCorrectMoveEl.innerText = puzzle?.bestMove || '-';
+    renderLocalStorageFullness();
+    const raw = storage.getItem('blunders');
+    localstorageStateEl.innerText = raw || '[]';
+}
+
+// Render estimated localStorage usage in the debug panel.
+function renderLocalStorageFullness() {
+    if (!localstorageFullnessEl) throw new Error('localstorage-fullness element not found');
+
+    const usedBytes = storage.estimateUsageBytes();
+    const quotaBytes = 5 * 1024 * 1024;
+    const percent = Math.min(100, Math.round((usedBytes / quotaBytes) * 100));
+    localstorageFullnessEl.innerText = `${format_module.formatBytes(usedBytes)} / ${format_module.formatBytes(quotaBytes)} (${percent}%)`;
+}
+
+// Update headline puzzle count stats.
 function updateStats() {
-    const blunders = getBlunders().slice(0, getPositionLimit());
+    const blunders = getBlunders().slice(0, storage.getPositionLimit());
     const count = blunders.length;
     document.getElementById('puzzle-count').innerText = count;
     updateNextPuzzleButtonAppearance();
 }
 
-function attachEventListeners() {
-    if (!nextBtn || !clearBtn || !exportBtn || !debugToggleBtn || !fetchBtn || !maxPositionsInput) {
-        console.warn('Some DOM elements not yet initialized');
-        return;
-    }
+// Keep next puzzle button state synchronized with current attempt state.
+function updateNextPuzzleButtonAppearance() {
+    if (!nextBtn) throw new Error('next-btn element not found');
+    nextBtn.disabled = false;
+    nextBtn.classList.toggle('pending-move', !hasAttemptedMoveOnCurrentPuzzle);
+}
 
-    maxPositionsInput.onchange = () => {
-        const normalized = setPositionLimit(maxPositionsInput.value);
-        maxPositionsInput.value = String(normalized);
+// Update status banner tone for neutral/correct/wrong states.
+function setStatusTone(tone = 'neutral') {
+    if (!statusMsg) throw new Error('status-msg element not found');
+    statusMsg.classList.remove('status-correct', 'status-wrong');
+    if (tone === 'correct') statusMsg.classList.add('status-correct');
+    if (tone === 'wrong') statusMsg.classList.add('status-wrong');
+}
 
-        const trimmed = setBlunders(getBlunders());
-        if (trimmed.length === 0) {
-            localStorage.removeItem('blunders');
-            currentPuzzle = null;
-            hasAttemptedMoveOnCurrentPuzzle = false;
-            setBoardLastMoveHighlight(null, null);
-            clearCurrentMoveHighlight();
-            setStatusTone('neutral');
-            statusMsg.innerText = 'No puzzles loaded yet.';
-        } else if (currentPuzzle && !trimmed.some((p) => p.id === currentPuzzle.id)) {
-            loadPuzzleById(trimmed[0].id);
-        }
+// Read and normalize persisted blunder records.
+function getBlunders() {
+    const parsed = storage.getRawBlunders();
+    return parsed.map(normalizePuzzleEntry);
+}
 
-        updateStats();
-        renderCurrentPositionInfo(currentPuzzle);
-        renderDebugInfo(currentPuzzle);
+// Persist normalized blunders constrained by current position limit.
+function setBlunders(blunders) {
+    const trimmed = blunders.slice(0, storage.getPositionLimit()).map(normalizePuzzleEntry);
+    storage.setRawBlunders(trimmed);
+    return trimmed;
+}
+
+// Normalize puzzle records from storage to current schema.
+function normalizePuzzleEntry(puzzle) {
+    const state = puzzleState_module.normalizePuzzleState(puzzle);
+    return {
+        ...puzzle,
+        state
     };
+}
 
-    fetchBtn.onclick = async () => {
-        const user = document.getElementById('username').value.trim();
-        if (!user) return alert("Enter a username");
-        localStorage.setItem('username', user);
-        const selectedLimit = setPositionLimit(maxPositionsInput.value);
-        maxPositionsInput.value = String(selectedLimit);
-        
-        setStatusTone('neutral');
-        statusMsg.innerText = "Fetching and analyzing games...";
-        try {
-            const response = await fetch(`https://lichess.org/api/games/user/${encodeURIComponent(user)}?max=20&moves=true&evals=true&analysed=true`, {
-                headers: { 'Accept': 'application/x-ndjson' }
-            });
-
-            if (!response.ok) {
-                throw new Error(`Lichess API error: ${response.status}`);
-            }
-            if (!response.body) {
-                throw new Error('No response stream available');
-            }
-            
-            const reader = response.body.getReader();
-            const decoder = new TextDecoder();
-            let blunders = getBlunders();
-            const existingIds = new Set(blunders.map((p) => p.id));
-            let remainder = '';
-
-            while (true) {
-                const { value, done } = await reader.read();
-                if (done) {
-                    remainder += decoder.decode();
-                    const tail = remainder.trim();
-                    if (tail) {
-                        const gameData = JSON.parse(tail);
-                        extractBlunders(gameData, user, blunders, existingIds);
-                    }
-                    break;
-                }
-
-                const chunk = remainder + decoder.decode(value, { stream: true });
-                const lines = chunk.split('\n');
-                remainder = lines.pop() || '';
-
-                for (const line of lines) {
-                    const trimmed = line.trim();
-                    if (!trimmed) continue;
-                    const gameData = JSON.parse(trimmed);
-                    extractBlunders(gameData, user, blunders, existingIds);
-                }
-            }
-
-            blunders = setBlunders(blunders);
-            updateStats();
-            renderCurrentPositionInfo(currentPuzzle);
-            renderDebugInfo(currentPuzzle);
-            setStatusTone('neutral');
-            statusMsg.innerText = "Sync complete!";
-        } catch (e) {
-            console.error(e);
-            setStatusTone('neutral');
-            statusMsg.innerText = `Error: ${formatErrorMessage(e)}`;
-        }
-    };
-
-    positionsContentEl.addEventListener('click', (event) => {
-        const target = event.target;
-        if (!(target instanceof HTMLElement)) return;
-
-        const toggle = target.closest('.position-state-toggle');
-        if (toggle instanceof HTMLButtonElement) {
-            const puzzleId = toggle.dataset.puzzleId;
-            if (!puzzleId) return;
-
-            const blunders = getBlunders();
-            const puzzle = blunders.find((p) => p.id === puzzleId);
-            if (!puzzle) return;
-
-            const previousState = normalizePuzzleState(puzzle);
-            puzzle.state = getNextPuzzleState(previousState);
-            setBlunders(blunders);
-            updateStats();
-
-            renderCurrentPositionInfo(currentPuzzle);
-            renderDebugInfo(currentPuzzle);
-            return;
-        }
-
-        const row = target.closest('.position-row');
-        if (!(row instanceof HTMLElement)) return;
-        const puzzleId = row.dataset.puzzleId;
-        if (!puzzleId) return;
-
-        loadPuzzleById(puzzleId);
-    });
-
-    nextBtn.onclick = loadNextPuzzle;
-
-    clearBtn.onclick = () => {
-        localStorage.removeItem('blunders');
-        currentPuzzle = null;
-        hasAttemptedMoveOnCurrentPuzzle = false;
-        setBoardLastMoveHighlight(null, null);
-        updateStats();
-        renderCurrentPositionInfo(null);
-        renderDebugInfo(null);
-        setStatusTone('neutral');
-        statusMsg.innerText = "Local data cleared.";
-    };
-
-    exportBtn.onclick = () => {
-        const blunders = getBlunders();
-        if (blunders.length === 0) {
-            alert('No puzzle data to export');
-            return;
-        }
-
-        const headers = ['ID', 'State', 'Attempts', 'Failures'];
-        const rows = blunders.map((p) => [
-            `"${p.id}"`,
-            p.state || 'unvetted',
-            Number(p.attempts || 0),
-            Number(p.failures || 0)
-        ]);
-
-        const csv = [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
-        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-        const link = document.createElement('a');
-        const url = URL.createObjectURL(blob);
-        link.setAttribute('href', url);
-        link.setAttribute('download', `blunder-driller-${new Date().toISOString().split('T')[0]}.csv`);
-        link.style.visibility = 'hidden';
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        setStatusTone('neutral');
-        statusMsg.innerText = `Exported ${blunders.length} puzzle(s)`;
-    };
-
-    debugToggleBtn.onclick = () => {
-        debugPanel.classList.toggle('visible');
-        const isVisible = debugPanel.classList.contains('visible');
-        debugToggleBtn.innerText = isVisible ? 'Hide' : 'Show localStorage';
-        debugToggleBtn.title = isVisible
-            ? 'Hide debug details including localStorage contents'
-            : 'Show debug details including localStorage contents';
-    };
-
-    // Attach board event listener
-    board.addEventListener('drop', boardDropHandler);
+// Cache required DOM references and initialize board highlight styles.
+function initDOMReferences() {
+    board = document.getElementById('board');
+    statusMsg = document.getElementById('status-msg');
+    nextBtn = document.getElementById('next-btn');
+    fetchBtn = document.getElementById('fetch-btn');
+    exportBtn = document.getElementById('export-btn');
+    clearBtn = document.getElementById('clear-btn');
+    debugToggleBtn = document.getElementById('debug-toggle-btn');
+    debugPanel = document.getElementById('debug-panel');
+    debugCorrectMoveEl = document.getElementById('debug-correct-move');
+    localstorageFullnessEl = document.getElementById('localstorage-fullness');
+    localstorageStateEl = document.getElementById('localstorage-state');
+    positionsContentEl = document.getElementById('positions-content');
+    metadataDisplay = document.getElementById('metadata-display');
+    maxPositionsInput = document.getElementById('max-positions');
+    board_module.ensureBoardHighlightStyles();
 }
