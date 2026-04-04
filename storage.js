@@ -1,7 +1,7 @@
 (function () {
     const DEFAULT_POSITION_LIMIT = 3;
     const MAX_POSITION_LIMIT_KEY = 'maxPositions';
-    const BLUNDERS_KEY = 'blunders';
+    const POSITIONS_KEY = 'positions';
     const USERNAME_KEY = 'username';
 
     function parsePositionLimit(value) {
@@ -24,22 +24,22 @@
         return normalized;
     }
 
-    function getRawBlunders() {
-        const raw = localStorage.getItem(BLUNDERS_KEY);
+    function getRawPositions() {
+        const raw = localStorage.getItem(POSITIONS_KEY);
         if (raw === null) return [];
         const parsed = JSON.parse(raw);
         if (!Array.isArray(parsed)) {
-            throw new Error(`Invalid blunders data in localStorage: expected array, got ${typeof parsed}`);
+            throw new Error(`Invalid positions data in localStorage: expected array, got ${typeof parsed}`);
         }
         return parsed;
     }
 
-    function setRawBlunders(blunders) {
-        localStorage.setItem(BLUNDERS_KEY, JSON.stringify(blunders));
+    function setRawPositions(positions) {
+        localStorage.setItem(POSITIONS_KEY, JSON.stringify(positions));
     }
 
-    function removeBlunders() {
-        localStorage.removeItem(BLUNDERS_KEY);
+    function removePositions() {
+        localStorage.removeItem(POSITIONS_KEY);
     }
 
     function getUsername() {
@@ -78,13 +78,13 @@
         return localStorage.getItem(key);
     }
 
-    window.blunderStorage = {
+    window.positionsStorage = {
         parsePositionLimit,
         getPositionLimit,
         setPositionLimit,
-        getRawBlunders,
-        setRawBlunders,
-        removeBlunders,
+        getRawPositions,
+        setRawPositions,
+        removePositions,
         getUsername,
         setUsername,
         estimateUsageBytes,

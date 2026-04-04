@@ -13,13 +13,14 @@ let localstorageStateEl;
 let positionsContentEl;
 let metadataDisplay;
 let maxPositionsInput;
+let singlePositionUrlInput;
+let loadUrlBtn;
 
-const storage = window.blunderStorage;
+const storage = window.positionsStorage;
 if (!storage) {
-    throw new Error('blunderStorage is not available. Ensure storage.js is loaded before script.js.');
+    throw new Error('positionsStorage is not available. Ensure storage.js is loaded before script.js.');
 }
 
-let chess = new Chess();
 let currentPuzzle = null;
 let hasAttemptedMoveOnCurrentPuzzle = false;
 // Extract module references
@@ -29,7 +30,7 @@ const format_module = window.formatModule;
 const lichess_module = window.lichessModule;
 
 if (!board_module || !puzzleState_module || !format_module || !lichess_module) {
-    throw new Error('Module dependencies not loaded. Ensure board.js, puzzle-state.js, format.js, and lichess.js are loaded before script.js.');
+    throw new Error('Module dependencies not loaded. Ensure board.js, puzzle-state.js, format.js, game.js, and lichess.js are loaded before script.js.');
 }
 
 // Make puzzle states and functions available
@@ -40,13 +41,11 @@ window.onload = () => {
     initDOMReferences();
     attachEventListeners();
 
-    if (maxPositionsInput) {
-        maxPositionsInput.value = String(storage.getPositionLimit());
-    }
+    maxPositionsInput.value = String(storage.getPositionLimit());
 
     const limited = setBlunders(getBlunders());
     if (limited.length === 0) {
-        storage.removeBlunders();
+        storage.removePositions();
     }
 
     const storedUsername = storage.getUsername();
@@ -67,12 +66,13 @@ window.onload = () => {
 
 // Attach UI events to focused handlers.
 function attachEventListeners() {
-    if (!nextBtn || !clearBtn || !exportBtn || !debugToggleBtn || !fetchBtn || !maxPositionsInput) {
+    if (!nextBtn || !clearBtn || !exportBtn || !debugToggleBtn || !fetchBtn || !maxPositionsInput || !singlePositionUrlInput || !loadUrlBtn) {
         throw new Error('Required DOM elements are not initialized');
     }
 
     maxPositionsInput.onchange = handleMaxPositionsChange;
     fetchBtn.onclick = handleFetchPositions;
+    loadUrlBtn.onclick = handleLoadSinglePositionFromUrl;
     positionsContentEl.addEventListener('click', handlePositionsListClick);
 
     nextBtn.onclick = loadNextPuzzle;
@@ -90,9 +90,10 @@ function handleMaxPositionsChange() {
 
     const trimmed = setBlunders(getBlunders());
     if (trimmed.length === 0) {
-        storage.removeBlunders();
+        storage.removePositions();
         currentPuzzle = null;
         hasAttemptedMoveOnCurrentPuzzle = false;
+        board_module.resetPuzzleSession();
         board_module.setBoardLastMoveHighlight(null, null);
         board_module.clearCurrentMoveHighlight();
         setStatusTone('neutral');
@@ -120,7 +121,13 @@ async function handleFetchPositions() {
         const existingIds = new Set(blunders.map((p) => p.id));
 
         await lichess_module.fetchGamesFromLichess(user, (gameData) => {
-            extractBlunders(gameData, user, blunders, existingIds);
+            const extracted = gameData.extractBlunders(
+                user,
+                existingIds,
+                format_module.normalizeUci,
+                APP_PUZZLE_STATES.UNVETTED
+            );
+            blunders.push(...extracted);
         });
 
         blunders = setBlunders(blunders);
@@ -132,6 +139,61 @@ async function handleFetchPositions() {
         setStatusTone('neutral');
         statusMsg.innerText = `Error: ${format_module.formatErrorMessage(e)}`;
     }
+}
+
+// Fetch a single position from Lichess and add it to storage.
+async function handleLoadSinglePositionFromUrl() {
+    const urlValue = singlePositionUrlInput.value.trim();
+    if (!urlValue) {
+        throw new Error('Lichess URL is required to load a single position');
+    }
+
+    const parsed = lichess_module.parseSinglePositionUrl(urlValue);
+    setStatusTone('neutral');
+    statusMsg.innerText = 'Fetching position from Lichess...';
+
+    try {
+        const puzzleId = `${parsed.gameId}-${parsed.ply - 1}`;
+        const existing = getBlunders();
+        
+        if (existing.some((p) => p.id === puzzleId)) {
+            setStatusTone('neutral');
+            statusMsg.innerText = 'Position already in storage.';
+            return;
+        }
+
+        const gameData = await lichess_module.fetchSingleGameFromLichess(parsed.gameId);
+        const position = gameData.extractSinglePosition(
+            parsed.ply,
+            format_module.normalizeUci,
+            APP_PUZZLE_STATES.UNVETTED
+        );
+        const updatedBlunders = getBlunders();
+        updatedBlunders.push(position);
+        setBlunders(updatedBlunders);
+
+        setStatusTone('neutral');
+        statusMsg.innerText = `Position imported: ${position.whitePlayer} vs ${position.blackPlayer}`;
+        displayPositionMetadataLink(position, parsed.canonicalUrl);
+        refreshPuzzleUi();
+        loadPuzzleById(puzzleId);
+        singlePositionUrlInput.value = '';
+    } catch (e) {
+        console.error(e);
+        setStatusTone('neutral');
+        statusMsg.innerText = `Error: ${format_module.formatErrorMessage(e)}`;
+    }
+}
+
+// Display game metadata link in metadata area.
+function displayPositionMetadataLink(position, canonicalUrl) {
+    metadataDisplay.innerHTML = '';
+    const link = document.createElement('a');
+    link.href = canonicalUrl;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    link.innerText = `View on Lichess: ${position.gameFormat} (${position.gameDate})`;
+    metadataDisplay.append(link);
 }
 
 // Handle clicks in the position list for state toggles and row selection.
@@ -165,9 +227,10 @@ function handlePositionsListClick(event) {
 
 // Clear local puzzle data and reset current puzzle UI.
 function handleClearData() {
-    storage.removeBlunders();
+    storage.removePositions();
     currentPuzzle = null;
     hasAttemptedMoveOnCurrentPuzzle = false;
+    board_module.resetPuzzleSession();
     board_module.setBoardLastMoveHighlight(null, null);
     refreshPuzzleUi();
     setStatusTone('neutral');
@@ -185,9 +248,9 @@ function handleExportData() {
     const headers = ['ID', 'State', 'Attempts', 'Failures'];
     const rows = blunders.map((p) => [
         `"${p.id}"`,
-        p.state || 'unvetted',
-        Number(p.attempts || 0),
-        Number(p.failures || 0)
+        p.state,
+        p.attempts,
+        p.failures
     ]);
 
     const csv = [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
@@ -220,6 +283,7 @@ function loadNextPuzzle() {
     if (!nextPuzzle) {
         currentPuzzle = null;
         hasAttemptedMoveOnCurrentPuzzle = false;
+        board_module.resetPuzzleSession();
         board_module.clearCurrentMoveHighlight();
         updateNextPuzzleButtonAppearance();
         board_module.setBoardLastMoveHighlight(null, null);
@@ -245,7 +309,7 @@ function loadPuzzleById(puzzleId) {
     board_module.clearCurrentMoveHighlight();
     updateNextPuzzleButtonAppearance();
 
-    chess.load(currentPuzzle.fen);
+    board_module.initializePuzzlePosition(currentPuzzle.fen);
     board.setAttribute('position', currentPuzzle.fen);
     board.setAttribute('orientation', currentPuzzle.color);
     board_module.setBoardLastMoveHighlight(currentPuzzle.previousMoveFrom, currentPuzzle.previousMoveTo);
@@ -285,7 +349,7 @@ function boardSelectedMoveHandler(e) {
         board_module.setCurrentMoveHighlight(source, target);
         updateNextPuzzleButtonAppearance();
     }
-    const move = chess.move({ from: source, to: target, promotion: 'q' });
+    const move = board_module.tryPuzzleMove({ from: source, to: target, promotion: 'q' });
 
     if (!move) {
         setStatusTone('neutral');
@@ -314,8 +378,8 @@ function boardSelectedMoveHandler(e) {
         blunders[pIdx].attempts++;
         blunders[pIdx].failures++;
         blunders = setBlunders(blunders);
-        chess.undo();
-        currentPuzzle = blunders[pIdx] || null;
+        board_module.undoPuzzleMove();
+        currentPuzzle = blunders[pIdx];
         renderCurrentPositionInfo(currentPuzzle);
         renderDebugInfo(currentPuzzle);
         return 'snapback';
@@ -326,63 +390,6 @@ function boardSelectedMoveHandler(e) {
     renderDebugInfo(currentPuzzle);
 }
 
-// Extract blunder positions from one analyzed Lichess game.
-function extractBlunders(game, username, storage, existingIds) {
-    const whiteName = game?.players?.white?.user?.name?.toLowerCase?.();
-    const blackName = game?.players?.black?.user?.name?.toLowerCase?.();
-    const userLower = username.toLowerCase();
-
-    if (whiteName !== userLower && blackName !== userLower) {
-        return;
-    }
-
-    const isWhite = whiteName === userLower;
-    const tempGame = new Chess();
-    const moveList = (game.moves || '').split(' ').filter(Boolean);
-    const analysis = Array.isArray(game.analysis) ? game.analysis : [];
-    const gameTimestamp = game.createdAt || 0;
-    const gameDate = game.createdAt ? new Date(game.createdAt).toLocaleDateString() : 'unknown';
-    const gameFormat = game.speed || 'unknown';
-    const whitePlayer = game?.players?.white?.user?.name || 'Unknown';
-    const blackPlayer = game?.players?.black?.user?.name || 'Unknown';
-    let previousMoveFrom = '';
-    let previousMoveTo = '';
-
-    analysis.forEach((moveEval, i) => {
-        const turn = i % 2 === 0 ? 'white' : 'black';
-        const isUserTurn = (isWhite && turn === 'white') || (!isWhite && turn === 'black');
-        const move = moveList[i];
-
-        if (!move) return;
-
-        if (isUserTurn && moveEval.judgment?.name === "Blunder") {
-            const id = `${game.id}-${i}`;
-            if (!existingIds.has(id)) {
-                storage.push({
-                    id,
-                    fen: tempGame.fen(),
-                    bestMove: format_module.normalizeUci(moveEval.best),
-                    color: turn,
-                    previousMoveFrom,
-                    previousMoveTo,
-                    state: APP_PUZZLE_STATES.UNVETTED,
-                    attempts: 0,
-                    failures: 0,
-                    gameTimestamp,
-                    gameDate,
-                    gameFormat,
-                    whitePlayer,
-                    blackPlayer
-                });
-                existingIds.add(id);
-            }
-        }
-
-        const parsedMove = tempGame.move(move);
-        previousMoveFrom = parsedMove?.from || '';
-        previousMoveTo = parsedMove?.to || '';
-    });
-}
 
 // Select a puzzle using weighted random sampling by mistake rate.
 function selectWeightedPuzzle() {
@@ -424,17 +431,17 @@ function renderAllPositions(currentId) {
         return;
     }
 
-    blunders.sort((a, b) => (Number(b.gameTimestamp || 0)) - (Number(a.gameTimestamp || 0)));
+    blunders.sort((a, b) => b.gameTimestamp - a.gameTimestamp);
 
     const weights = blunders.map((p) => {
         if (!puzzleState_module.isPuzzleActive(p)) return 0;
-        return (Number(p.failures || 0) + 1) / (Number(p.attempts || 0) + 1);
+        return (p.failures + 1) / (p.attempts + 1);
     });
     const totalWeight = weights.reduce((a, b) => a + b, 0);
 
     const rows = blunders.map((p, idx) => {
-        const attempts = Number(p.attempts || 0);
-        const failures = Number(p.failures || 0);
+        const attempts = p.attempts;
+        const failures = p.failures;
         const correct = Math.max(0, attempts - failures);
         const accuracy = attempts > 0 ? `${Math.round((correct / attempts) * 100)}%` : '-';
         const probability = totalWeight > 0 ? Math.round((weights[idx] / totalWeight) * 100) : 0;
@@ -444,17 +451,16 @@ function renderAllPositions(currentId) {
         const activeClass = currentId === p.id ? ' active' : '';
         const disabledClass = !puzzleState_module.isPuzzleActive(p) ? ' disabled' : '';
         const unvettedClass = state === APP_PUZZLE_STATES.UNVETTED ? ' unvetted' : '';
-        const dateDisplay = p.gameDate || '-';
-        return `<div class="position-row${activeClass}${disabledClass}${unvettedClass}" data-puzzle-id="${p.id}"><div class="position-toggle"><button class="position-state-toggle" type="button" data-puzzle-id="${p.id}" data-puzzle-state="${state}" title="${stateTitle}" aria-label="${stateTitle}">${stateLabel}</button><span class="position-row-text">${dateDisplay} | ${p.id}: ${correct} / ${attempts} ${accuracy} [${probability}%]</span></div></div>`;
+        return `<div class="position-row${activeClass}${disabledClass}${unvettedClass}" data-puzzle-id="${p.id}"><div class="position-toggle"><button class="position-state-toggle" type="button" data-puzzle-id="${p.id}" data-puzzle-state="${state}" title="${stateTitle}" aria-label="${stateTitle}">${stateLabel}</button><span class="position-row-text">${p.gameDate} | ${p.id}: ${correct} / ${attempts} ${accuracy} [${probability}%]</span></div></div>`;
     }).join('');
     positionsContentEl.innerHTML = rows;
 }
 
 // Render debug details for the selected puzzle.
 function renderDebugInfo(puzzle) {
-    debugCorrectMoveEl.innerText = puzzle?.bestMove || '-';
+    debugCorrectMoveEl.innerText = puzzle ? puzzle.bestMove : '-';
     renderLocalStorageFullness();
-    const raw = storage.getItem('blunders');
+    const raw = storage.getItem('positions');
     localstorageStateEl.innerText = raw || '[]';
 }
 
@@ -493,14 +499,14 @@ function setStatusTone(tone = 'neutral') {
 
 // Read and normalize persisted blunder records.
 function getBlunders() {
-    const parsed = storage.getRawBlunders();
+    const parsed = storage.getRawPositions();
     return parsed.map(normalizePuzzleEntry);
 }
 
 // Persist normalized blunders constrained by current position limit.
 function setBlunders(blunders) {
     const trimmed = blunders.slice(0, storage.getPositionLimit()).map(normalizePuzzleEntry);
-    storage.setRawBlunders(trimmed);
+    storage.setRawPositions(trimmed);
     return trimmed;
 }
 
@@ -529,5 +535,7 @@ function initDOMReferences() {
     positionsContentEl = document.getElementById('positions-content');
     metadataDisplay = document.getElementById('metadata-display');
     maxPositionsInput = document.getElementById('max-positions');
+    singlePositionUrlInput = document.getElementById('single-position-url');
+    loadUrlBtn = document.getElementById('load-url-btn');
     board_module.ensureBoardHighlightStyles();
 }

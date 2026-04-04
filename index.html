@@ -36,24 +36,31 @@
             <div id="data-controls" class="panel">
                 <input type="text" id="username" placeholder="Lichess Username" autocomplete="off" spellcheck="false" aria-label="Lichess Username">
                 <input type="number" id="max-positions" min="1" step="1" value="3" title="Maximum number of puzzle positions to keep locally" aria-label="Maximum positions to keep">
-                <button id="fetch-btn" type="button" title="Fetch recent analyzed games and import blunder positions">Import Positions</button>
+                <button id="fetch-btn" type="button" title="Fetch recent analyzed games and import blunder positions">Import Blunders</button>
+                <input type="text" id="single-position-url" placeholder="Lichess URL (e.g. https://lichess.org/cuowe51G/white#36)" autocomplete="off" spellcheck="false" aria-label="Single Position Lichess URL">
+                <button id="load-url-btn" type="button" title="Load one position from a Lichess game URL">Import Position</button>
+            </div>
+            <div id="data-actions">
                 <button id="export-btn" type="button" title="Export puzzle data (ID, state, attempts, failures) to a file">Export Data</button>
                 <button id="clear-btn" type="button" title="Delete all locally stored puzzle data">Delete Data</button>
+                <button id="debug-toggle-btn" type="button" title="Show debug details including localStorage contents">Show localStorage</button>
             </div>
-            <button id="debug-toggle-btn" type="button" title="Show debug details including localStorage contents">Show localStorage</button>
             <div id="debug-panel" class="panel" aria-label="Debug data">
                 <h3>Debug</h3>
                 <div>Correct Move: <span id="debug-correct-move">-</span></div>
                 <div>localStorage fullness: <span id="localstorage-fullness">-</span></div>
-                <div>localStorage.blunders:</div>
+                <div>localStorage.positions:</div>
                 <pre id="localstorage-state">[]</pre>
             </div>
         </aside>
     </main>
     <noscript>This app requires JavaScript to run.</noscript>
-    <script defer src="storage.js"></script>    <script defer src="board.js"></script>
+    <script defer src="storage.js"></script>
+    <script defer src="board.js"></script>
     <script defer src="puzzle-state.js"></script>
-    <script defer src="format.js"></script>    <script defer src="lichess.js"></script>
+    <script defer src="format.js"></script>
+    <script defer src="game.js"></script>
+    <script defer src="lichess.js"></script>
     <script defer src="script.js"></script>
 </body>
 </html>
