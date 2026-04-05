@@ -131,9 +131,18 @@ function submitValidatedMove(from, to, setAction) {
 }
 
 function squareFromBoardPointerEvent(event) {
-    if (!(event instanceof MouseEvent)) {
+    let clientX, clientY;
+
+    if (event instanceof MouseEvent) {
+        clientX = event.clientX;
+        clientY = event.clientY;
+    } else if (event instanceof TouchEvent && event.changedTouches && event.changedTouches.length > 0) {
+        clientX = event.changedTouches[0].clientX;
+        clientY = event.changedTouches[0].clientY;
+    } else {
         return null;
     }
+
     if (!boardRef) {
         throw new Error('Board is not initialized');
     }
@@ -143,8 +152,8 @@ function squareFromBoardPointerEvent(event) {
         return null;
     }
 
-    const x = event.clientX - rect.left;
-    const y = event.clientY - rect.top;
+    const x = clientX - rect.left;
+    const y = clientY - rect.top;
     if (x < 0 || y < 0 || x > rect.width || y > rect.height) {
         return null;
     }
@@ -167,30 +176,30 @@ function squareFromBoardPointerEvent(event) {
     return normalizeSquare(`${file}${rank}`);
 }
 
-// Handle click-to-move by selecting from-square then to-square.
-function boardSquareClickHandler(event) {
-    const clickedSquare = squareFromBoardPointerEvent(event);
-    if (!clickedSquare || !currentFen) return;
+// Handle click/tap-to-move by selecting from-square then to-square.
+function boardMoveSelectionHandler(event) {
+    const selectedSquare = squareFromBoardPointerEvent(event);
+    if (!selectedSquare || !currentFen) return;
 
     if (!pendingFromSquare) {
-        if (!isOwnPieceOnSquare(clickedSquare)) {
+        if (!isOwnPieceOnSquare(selectedSquare)) {
             return;
         }
-        pendingFromSquare = clickedSquare;
-        setCurrentMoveHighlight(clickedSquare, null);
+        pendingFromSquare = selectedSquare;
+        setCurrentMoveHighlight(selectedSquare, null);
         return;
     }
 
-    if (clickedSquare === pendingFromSquare) {
+    if (selectedSquare === pendingFromSquare) {
         pendingFromSquare = null;
         clearCurrentMoveHighlight();
         return;
     }
 
-    if (!submitValidatedMove(pendingFromSquare, clickedSquare)) {
-        if (isOwnPieceOnSquare(clickedSquare)) {
-            pendingFromSquare = clickedSquare;
-            setCurrentMoveHighlight(clickedSquare, null);
+    if (!submitValidatedMove(pendingFromSquare, selectedSquare)) {
+        if (isOwnPieceOnSquare(selectedSquare)) {
+            pendingFromSquare = selectedSquare;
+            setCurrentMoveHighlight(selectedSquare, null);
             return;
         }
         setCurrentMoveHighlight(pendingFromSquare, null);
@@ -236,7 +245,8 @@ function init(divName, onValidMove) {
 
     onValidMoveCallback = onValidMove;
     boardRef.addEventListener('drop', boardSelectedMoveHandler);
-    boardRef.addEventListener('click', boardSquareClickHandler);
+    boardRef.addEventListener('click', boardMoveSelectionHandler);
+    boardRef.addEventListener('touchend', boardMoveSelectionHandler);
 }
 
 window.boardModule = {
@@ -248,7 +258,7 @@ window.boardModule = {
     reset,
     isValidMove,
     boardSelectedMoveHandler,
-    boardSquareClickHandler,
+    boardMoveSelectionHandler,
     init,
     get boardRef() { return boardRef; }
 };
