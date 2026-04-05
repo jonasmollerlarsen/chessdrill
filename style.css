@@ -86,6 +86,34 @@ body {
     color: #f3f8ff;
 }
 
+#status-msg .status-eval-row {
+    display: grid;
+    grid-template-columns: 7ch 6ch minmax(0, 1fr);
+    align-items: baseline;
+    gap: 10px;
+    width: min(100%, 28rem);
+    margin: 0 auto;
+    text-align: left;
+    font-family: Consolas, Monaco, 'Courier New', monospace;
+    font-size: 0.95rem;
+}
+
+#status-msg .status-eval-label {
+    opacity: 0.95;
+}
+
+#status-msg .status-eval-move {
+    color: inherit;
+}
+
+#status-msg .status-eval-value {
+    color: #f3f8ff;
+}
+
+#status-msg .status-eval-value.is-pending {
+    color: #9ba8b8;
+}
+
 .sidebar {
     flex: 1;
     background: linear-gradient(135deg, rgba(20, 40, 65, 0.4) 0%, rgba(10, 25, 45, 0.4) 100%);
@@ -195,11 +223,6 @@ body {
     background: rgba(52, 152, 219, 0.2);
     padding: 4px 4px;
     border-radius: 3px;
-}
-
-.position-row.active::before {
-    content: '→ ';
-    margin-right: 0;
 }
 
 #localstorage-state {

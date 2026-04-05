@@ -445,23 +445,37 @@ async function setMoveFeedbackStatus(selectedMove, puzzle, renderToken = 0) {
     statusMsg.innerHTML = '';
     displayPuzzleInfoInStatus(puzzle);
 
-    const answerLine = document.createElement('div');
-    answerLine.className = 'status-answer-line';
-    answerLine.innerText = `Answer: ${selectedMove} (evaluating...)`;
-    answerLine.style.color = '#f3f8ff';
-    statusMsg.append(answerLine);
+    const createStatusEvalRow = (rowClass, labelText, moveText) => {
+        const line = document.createElement('div');
+        line.className = `${rowClass} status-eval-row`;
+        line.style.color = '#f3f8ff';
 
-    const bestLine = document.createElement('div');
-    bestLine.className = 'status-detail-line';
-    bestLine.innerText = 'Best: (evaluating...)';
-    bestLine.style.color = '#f3f8ff';
-    statusMsg.append(bestLine);
+        const label = document.createElement('span');
+        label.className = 'status-eval-label';
+        label.innerText = labelText;
 
-    const playedLine = document.createElement('div');
-    playedLine.className = 'status-detail-line';
-    playedLine.innerText = `Played: ${puzzle.playedMove} (evaluating...)`;
-    playedLine.style.color = '#f3f8ff';
-    statusMsg.append(playedLine);
+        const move = document.createElement('span');
+        move.className = 'status-eval-move';
+        move.innerText = moveText;
+
+        const evalValue = document.createElement('span');
+        evalValue.className = 'status-eval-value is-pending';
+        evalValue.innerText = '(evaluating...)';
+
+        line.append(label, move, evalValue);
+        statusMsg.append(line);
+        return { line, move, evalValue };
+    };
+
+    const answerRow = createStatusEvalRow('status-answer-line', 'Answer:', selectedMove);
+    const bestRow = createStatusEvalRow('status-detail-line', 'Best:', '...');
+    const playedRow = createStatusEvalRow('status-detail-line', 'Played:', puzzle.playedMove);
+
+    const answerLine = answerRow.line;
+    const answerEvalText = answerRow.evalValue;
+    const bestMoveText = bestRow.move;
+    const bestEvalText = bestRow.evalValue;
+    const playedEvalText = playedRow.evalValue;
 
     const isStale = () => renderToken !== feedbackRenderToken;
     let latestAnswerScore = null;
@@ -482,7 +496,7 @@ async function setMoveFeedbackStatus(selectedMove, puzzle, renderToken = 0) {
                     (updatedScore) => {
                         latestAnswerScore = updatedScore;
                         if (isStale()) return;
-                        answerLine.innerText = `Answer: ${selectedMove} (${formatEvaluationScore(updatedScore)})`;
+                        answerEvalText.innerText = `(${formatEvaluationScore(updatedScore)})`;
                         updateAnswerTone();
                     }
                 );
@@ -503,10 +517,11 @@ async function setMoveFeedbackStatus(selectedMove, puzzle, renderToken = 0) {
                             latestBestScore = updated.score;
                         }
                         if (isStale()) return;
+                        bestMoveText.innerText = updated.bestMove;
                         const bestScoreText = updated.score
                             ? formatEvaluationScore(updated.score)
                             : 'evaluating...';
-                        bestLine.innerText = `Best: ${updated.bestMove} (${bestScoreText})`;
+                        bestEvalText.innerText = `(${bestScoreText})`;
                         if (updated.score) {
                             updateAnswerTone();
                         }
@@ -514,10 +529,10 @@ async function setMoveFeedbackStatus(selectedMove, puzzle, renderToken = 0) {
                 );
                 latestBestScore = score;
                 updateAnswerTone();
-                if (!bestMove) return '??';
-                return `${bestMove} (${formatEvaluationScore(score)})`;
+                if (!bestMove) return { move: '??', eval: '(n/a)' };
+                return { move: bestMove, eval: `(${formatEvaluationScore(score)})` };
             } catch (_) {
-                return '??';
+                return { move: '??', eval: '(n/a)' };
             }
         })(),
         getMoveEvaluationText(
@@ -525,7 +540,7 @@ async function setMoveFeedbackStatus(selectedMove, puzzle, renderToken = 0) {
             puzzle.playedMove,
             (updated) => {
                 if (isStale()) return;
-                playedLine.innerText = `Played: ${puzzle.playedMove} (${updated})`;
+                playedEvalText.innerText = `(${updated})`;
             }
         ),
     ]);
@@ -534,9 +549,13 @@ async function setMoveFeedbackStatus(selectedMove, puzzle, renderToken = 0) {
         return null;
     }
 
-    answerLine.innerText = `Answer: ${selectedMove} (${answerEval})`;
-    bestLine.innerText = `Best: ${bestResult}`;
-    playedLine.innerText = `Played: ${puzzle.playedMove} (${playedEval})`;
+    answerEvalText.classList.remove('is-pending');
+    bestEvalText.classList.remove('is-pending');
+    playedEvalText.classList.remove('is-pending');
+    answerEvalText.innerText = `(${answerEval})`;
+    bestMoveText.innerText = bestResult.move;
+    bestEvalText.innerText = bestResult.eval;
+    playedEvalText.innerText = `(${playedEval})`;
     updateAnswerTone();
 
     if (!latestAnswerScore || !latestBestScore) return null;
