@@ -16,7 +16,8 @@ function getPuzzleLichessUrl(puzzle) {
     }
 
     const orientation = puzzle?.color === 'black' ? 'black' : 'white';
-    return `https://lichess.org/${gameId}/${orientation}#${plyIndex}`;
+    const queriedPly = Math.max(1, plyIndex);
+    return `https://lichess.org/${gameId}/${orientation}#${queriedPly}`;
 }
 
 // enrichGameWithChess and parseGameSpeed are in game.js

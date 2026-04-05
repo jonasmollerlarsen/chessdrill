@@ -6,7 +6,7 @@ function enrichGameWithChess(pgn) {
 }
 
 class Puzzle {
-    /** @type {string} Unique puzzle id: `<gameId>-<ply>` where ply matches the Lichess URL hash */
+    /** @type {string} Unique puzzle id: `<gameId>-<plyIndex>` */
     id;
     /** @type {string} FEN of the position before the move to find */
     fen;
@@ -130,7 +130,7 @@ class EnrichedGame {
 
             const isUserTurn = (isWhite && turn === 'white') || (!isWhite && turn === 'black');
             if (isUserTurn && moveEval.judgment?.name === 'Blunder') {
-                const id = `${gameId}-${i + 1}`;
+                const id = `${gameId}-${i}`;
                 if (!existingIds.has(id)) {
                     const playedMove = normalizeUci(`${move.from}${move.to}${move.promotion || ''}`);
                     extracted.push(new Puzzle({
@@ -176,7 +176,7 @@ class EnrichedGame {
         const colorToMove = targetPly % 2 === 0 ? 'white' : 'black';
 
         return new Puzzle({
-            id: `${gameId}-${targetPly}`,
+            id: `${gameId}-${targetPly - 1}`,
             fen,
             playedMove,
             color: colorToMove,
@@ -279,37 +279,6 @@ function getInitialFen() {
     return 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 }
 
-/** Convert a UCI move to SAN for a given FEN position. */
-function uciToSan(fen, uciMove) {
-    const fenValue = String(fen || '').trim();
-    if (!fenValue) {
-        throw new Error('FEN is required for UCI-to-SAN conversion');
-    }
-
-    const moveValue = String(uciMove || '').trim().toLowerCase();
-    if (!/^[a-h][1-8][a-h][1-8][qrbn]?$/.test(moveValue)) {
-        throw new Error(`Invalid UCI move: ${uciMove}`);
-    }
-
-    const chess = new Chess();
-    if (!chess.load(fenValue)) {
-        throw new Error(`Invalid FEN: ${fen}`);
-    }
-
-    const move = chess.move({
-        from: moveValue.slice(0, 2),
-        to: moveValue.slice(2, 4),
-        promotion: moveValue[4] || undefined,
-    });
-
-    if (!move) {
-        throw new Error(`Illegal move for FEN: ${uciMove}`);
-    }
-
-    return move.san;
-}
-
 window.gameModule = {
-    enrichGameWithChess,
-    uciToSan,
+    enrichGameWithChess
 };

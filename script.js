@@ -27,14 +27,13 @@ let hasAttemptedMoveOnCurrentPuzzle = false;
 let feedbackRenderToken = 0;
 // Extract module references
 const board_module = window.boardModule;
-const game_module = window.gameModule;
 const puzzleState_module = window.puzzleStateModule;
 const format_module = window.formatModule;
 const lichess_module = window.lichessModule;
 const eval_module = window.evalModule;
 const stockfishEngine_module = window.stockfishModule;
 
-if (!board_module || !game_module || !puzzleState_module || !format_module || !lichess_module || !eval_module || !stockfishEngine_module) {
+if (!board_module || !puzzleState_module || !format_module || !lichess_module || !eval_module || !stockfishEngine_module) {
     throw new Error('Module dependencies not loaded. Ensure board.js, puzzle-state.js, format.js, game.js, lichess.js, stockfish.js, and eval.js are loaded before script.js.');
 }
 
@@ -305,7 +304,7 @@ async function handleLoadSinglePositionFromUrl() {
     statusMsg.innerText = 'Fetching position from Lichess...';
 
     try {
-        const puzzleId = `${parsed.gameId}-${parsed.ply}`;
+        const puzzleId = `${parsed.gameId}-${parsed.ply - 1}`;
         const existing = getBlunders();
         
         if (existing.some((p) => p.id === puzzleId)) {
@@ -514,9 +513,6 @@ async function setMoveFeedbackStatus(selectedMove, puzzle, renderToken = 0) {
     statusMsg.innerHTML = '';
     displayPuzzleInfoInStatus(puzzle);
 
-    const answerMoveDisplay = game_module.uciToSan(puzzle.fen, selectedMove);
-    const playedMoveDisplay = game_module.uciToSan(puzzle.fen, puzzle.playedMove);
-
     const puzzleRow = statusMsg.querySelector('.position-row');
     if (puzzleRow) {
         puzzleRow.classList.add('is-pending');
@@ -544,10 +540,10 @@ async function setMoveFeedbackStatus(selectedMove, puzzle, renderToken = 0) {
         return { line, move, evalValue };
     };
 
-    const answerRow = createStatusEvalRow('status-answer-line', 'Answer', answerMoveDisplay);
+    const answerRow = createStatusEvalRow('status-answer-line', 'Answer', selectedMove);
     const bestRow = createStatusEvalRow('status-detail-line', 'Best', '...');
     bestRow.move.classList.add('is-pending');
-    const playedRow = createStatusEvalRow('status-detail-line', 'Game', playedMoveDisplay);
+    const playedRow = createStatusEvalRow('status-detail-line', 'Game', puzzle.playedMove);
 
     const answerLine = answerRow.line;
     const answerEvalText = answerRow.evalValue;
@@ -616,7 +612,7 @@ async function setMoveFeedbackStatus(selectedMove, puzzle, renderToken = 0) {
             if (bestMoveCached) {
                 latestBestScore = puzzle.bestMoveScore;
                 if (!isStale()) {
-                    bestMoveText.innerText = game_module.uciToSan(puzzle.fen, puzzle.bestMove);
+                    bestMoveText.innerText = puzzle.bestMove;
                     bestMoveText.classList.remove('is-pending');
                     bestEvalText.classList.remove('is-pending');
                     bestEvalText.innerText = `(${formatEvaluationScore(latestBestScore)})`;
@@ -633,7 +629,7 @@ async function setMoveFeedbackStatus(selectedMove, puzzle, renderToken = 0) {
                             latestBestScore = updated.score;
                         }
                         if (isStale()) return;
-                        bestMoveText.innerText = game_module.uciToSan(puzzle.fen, updated.bestMove);
+                        bestMoveText.innerText = updated.bestMove;
                         const bestScoreText = updated.score
                             ? formatEvaluationScore(updated.score)
                             : 'evaluating...';
@@ -691,7 +687,7 @@ async function setMoveFeedbackStatus(selectedMove, puzzle, renderToken = 0) {
     bestMoveText.classList.remove('is-pending');
     playedEvalText.classList.remove('is-pending');
     answerEvalText.innerText = `(${answerEval})`;
-    bestMoveText.innerText = bestResult.move === '??' ? '??' : game_module.uciToSan(puzzle.fen, bestResult.move);
+    bestMoveText.innerText = bestResult.move;
     bestEvalText.innerText = bestResult.eval;
     playedEvalText.innerText = `(${playedEval})`;
     updateAnswerTone();
@@ -754,14 +750,12 @@ async function getBestMoveText(fen, onUpdate) {
             onUpdate
                 ? (updated) => {
                     if (!updated.bestMove) return;
-                    const sanMove = game_module.uciToSan(fen, updated.bestMove);
-                    onUpdate(`${sanMove} (${formatEvaluationScore(updated.score)})`);
+                    onUpdate(`${updated.bestMove} (${formatEvaluationScore(updated.score)})`);
                 }
                 : undefined
         );
         if (!bestMove) return '??';
-        const sanMove = game_module.uciToSan(fen, bestMove);
-        return `${sanMove} (${formatEvaluationScore(score)})`;
+        return `${bestMove} (${formatEvaluationScore(score)})`;
     } catch (_) {
         return '??';
     }
