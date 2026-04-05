@@ -33,8 +33,8 @@ function getPuzzleStateLabel(state) {
 }
 
 function getPuzzleStateTitle(state) {
-    if (state === PUZZLE_STATES.ENABLED) return 'Vetted and enabled';
-    if (state === PUZZLE_STATES.UNVETTED) return 'Not yet vetted';
+    if (state === PUZZLE_STATES.ENABLED) return 'Enabled';
+    if (state === PUZZLE_STATES.UNVETTED) return 'Unvetted';
     return 'Disabled';
 }
 

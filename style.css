@@ -46,7 +46,7 @@ body {
 
 #turn-area {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     justify-content: space-between;
     gap: 8px;
     margin-bottom: 8px;
@@ -62,7 +62,7 @@ body {
     color: #f3f8ff;
     display: flex;
     flex-direction: column;
-    justify-content: center;
+    justify-content: flex-start;
     gap: 2px;
 }
 
@@ -306,6 +306,7 @@ button:disabled { background: #6d7885; }
 }
 #board-controls {
     margin: 0;
+    align-self: flex-start;
 }
 
 #board-controls button {

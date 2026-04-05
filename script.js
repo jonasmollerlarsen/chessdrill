@@ -467,9 +467,9 @@ async function setMoveFeedbackStatus(selectedMove, puzzle, renderToken = 0) {
         return { line, move, evalValue };
     };
 
-    const answerRow = createStatusEvalRow('status-answer-line', 'Answer:', selectedMove);
-    const bestRow = createStatusEvalRow('status-detail-line', 'Best:', '...');
-    const playedRow = createStatusEvalRow('status-detail-line', 'Played:', puzzle.playedMove);
+    const answerRow = createStatusEvalRow('status-answer-line', 'Answer', selectedMove);
+    const bestRow = createStatusEvalRow('status-detail-line', 'Best', '...');
+    const playedRow = createStatusEvalRow('status-detail-line', 'Game', puzzle.playedMove);
 
     const answerLine = answerRow.line;
     const answerEvalText = answerRow.evalValue;
