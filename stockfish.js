@@ -1,7 +1,7 @@
 // Stockfish integration utilities
 // Using local copy to avoid CORS issues with Worker scripts
 const STOCKFISH_WORKER_URL = './stockfish.worker.js';
-const DEFAULT_MOVETIME_MS = 500;
+const TARGET_DEPTH = 21;
 
 let engineWorker = null;
 let isEngineReady = false;
@@ -51,7 +51,7 @@ function handleEngineMessage(event) {
         if (activeEval && activeEval.state === 'waiting-ready') {
             activeEval.state = 'searching';
             postToEngine(`position fen ${activeEval.fen}`);
-            postToEngine(`go movetime ${activeEval.movetime}`);
+            postToEngine(`go depth ${activeEval.targetDepth}`);
         }
         return;
     }
@@ -61,13 +61,46 @@ function handleEngineMessage(event) {
         if (parsed) {
             activeEval.latestScore = parsed;
         }
+
+        const depthMatch = line.match(/\bdepth\s+(\d+)/);
+        if (depthMatch) {
+            activeEval.latestDepth = Number(depthMatch[1]);
+        }
+
+        const pvMoveMatch = line.match(/\bpv\s+([a-h][1-8][a-h][1-8][qrbn]?)/);
+        if (pvMoveMatch) {
+            activeEval.latestBestMove = pvMoveMatch[1];
+        }
+
+        if (parsed && typeof activeEval.onUpdate === 'function') {
+            notifyActiveUpdate();
+        }
+
         return;
     }
 
     if (line.startsWith('bestmove ') && activeEval && activeEval.state === 'searching') {
         const parts = line.split(' ');
         const bestMove = parts[1] && parts[1] !== '(none)' ? parts[1] : null;
-        resolveActiveEval({ score: activeEval.latestScore || { cp: 0 }, bestMove });
+        resolveActiveEval({
+            score: activeEval.latestScore || { cp: 0 },
+            bestMove,
+            depth: activeEval.latestDepth || null,
+        });
+    }
+}
+
+function notifyActiveUpdate() {
+    if (!activeEval || typeof activeEval.onUpdate !== 'function') return;
+
+    try {
+        activeEval.onUpdate({
+            score: activeEval.latestScore,
+            bestMove: activeEval.latestBestMove || null,
+            depth: activeEval.latestDepth || null,
+        });
+    } catch (_) {
+        // Ignore callback exceptions so engine processing remains stable.
     }
 }
 
@@ -109,6 +142,8 @@ function processQueue() {
         ...next,
         state: 'waiting-ready',
         latestScore: null,
+        latestDepth: null,
+        latestBestMove: null,
     };
 
     ensureWorker();
@@ -121,21 +156,46 @@ function processQueue() {
     } else if (isEngineReady && activeEval && activeEval.state === 'waiting-ready') {
         activeEval.state = 'searching';
         postToEngine(`position fen ${activeEval.fen}`);
-        postToEngine(`go movetime ${activeEval.movetime}`);
+        postToEngine(`go depth ${activeEval.targetDepth}`);
     }
 }
 
-function evaluateFenRaw(fen) {
+function evaluateFenRaw(fen, options) {
     const fenValue = String(fen || '').trim();
+    const config = resolveEvaluationOptions(options);
 
     if (!fenValue) {
         throw new Error('FEN is required');
     }
 
     return new Promise((resolve, reject) => {
-        queuedEvals.push({ fen: fenValue, movetime: DEFAULT_MOVETIME_MS, resolve, reject });
+        queuedEvals.push({
+            fen: fenValue,
+            targetDepth: TARGET_DEPTH,
+            onUpdate: config.onUpdate,
+            resolve,
+            reject,
+        });
         processQueue();
     });
+}
+
+function resolveEvaluationOptions(options) {
+    if (options === undefined) return { onUpdate: null };
+
+    if (typeof options === 'function') {
+        return { onUpdate: options };
+    }
+
+    if (typeof options !== 'object' || options === null) {
+        throw new Error(`Invalid evaluation options: ${options}`);
+    }
+
+    if (options.onUpdate !== undefined && typeof options.onUpdate !== 'function') {
+        throw new Error('Invalid onUpdate callback');
+    }
+
+    return { onUpdate: options.onUpdate || null };
 }
 
 function terminateEngine() {

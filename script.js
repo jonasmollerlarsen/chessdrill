@@ -30,9 +30,10 @@ const puzzleState_module = window.puzzleStateModule;
 const format_module = window.formatModule;
 const lichess_module = window.lichessModule;
 const eval_module = window.evalModule;
+const stockfishEngine_module = window.stockfishModule;
 
-if (!board_module || !puzzleState_module || !format_module || !lichess_module || !eval_module) {
-    throw new Error('Module dependencies not loaded. Ensure board.js, puzzle-state.js, format.js, game.js, lichess.js, and eval.js are loaded before script.js.');
+if (!board_module || !puzzleState_module || !format_module || !lichess_module || !eval_module || !stockfishEngine_module) {
+    throw new Error('Module dependencies not loaded. Ensure board.js, puzzle-state.js, format.js, game.js, lichess.js, stockfish.js, and eval.js are loaded before script.js.');
 }
 
 // Make puzzle states and functions available
@@ -104,15 +105,25 @@ async function handleValidSelectedMove({ selectedMove }) {
     }
 
     const renderToken = ++feedbackRenderToken;
+    const feedbackPromise = setMoveFeedbackStatus(selectedMove, currentPuzzle, 'neutral', renderToken);
+    const bestMove = await getBestMoveForFen(currentPuzzle.fen);
+    if (!bestMove) {
+        await feedbackPromise;
+        setStatusTone('neutral');
+        statusMsg.innerText = 'Could not determine best move for this position.';
+        return;
+    }
 
-    if (selectedMove === currentPuzzle.bestMove) {
+    if (selectedMove === bestMove) {
         setStatusTone('correct');
-        await setMoveFeedbackStatus(selectedMove, currentPuzzle, 'correct', renderToken);
+        setFeedbackAnswerTone('correct');
+        await feedbackPromise;
         blunders[pIdx].attempts++;
         blunders = setBlunders(blunders);
     } else {
         setStatusTone('wrong');
-        await setMoveFeedbackStatus(selectedMove, currentPuzzle, 'wrong', renderToken);
+        setFeedbackAnswerTone('wrong');
+        await feedbackPromise;
         blunders[pIdx].attempts++;
         blunders[pIdx].failures++;
         blunders = setBlunders(blunders);
@@ -125,6 +136,15 @@ async function handleValidSelectedMove({ selectedMove }) {
     currentPuzzle = blunders[pIdx];
     renderCurrentPositionInfo(currentPuzzle);
     renderDebugInfo(currentPuzzle);
+}
+
+function setFeedbackAnswerTone(tone) {
+    const answerLine = statusMsg.querySelector('.status-answer-line');
+    if (!answerLine) return;
+
+    if (tone === 'correct') answerLine.style.color = '#8ee49a';
+    if (tone === 'wrong') answerLine.style.color = '#ff8f8f';
+    if (tone === 'neutral') answerLine.style.color = '#f3f8ff';
 }
 
 // Handle max position changes and trim local puzzle storage.
@@ -322,6 +342,8 @@ function handleDebugToggle() {
 
 // Load the next weighted puzzle or reset the board if no puzzles are available.
 function loadNextPuzzle() {
+    haltActiveEvaluation();
+
     const nextPuzzle = selectWeightedPuzzle();
     if (!nextPuzzle) {
         currentPuzzle = null;
@@ -341,6 +363,8 @@ function loadNextPuzzle() {
 
 // Load a puzzle by id and refresh board and metadata displays.
 function loadPuzzleById(puzzleId) {
+    haltActiveEvaluation();
+
     if (!puzzleId) return;
     const blunders = getBlunders().slice(0, storage.getPositionLimit());
     const puzzle = blunders.find((p) => p.id === puzzleId);
@@ -375,6 +399,11 @@ function loadPuzzleById(puzzleId) {
     metadataDisplay.append(link);
 }
 
+function haltActiveEvaluation() {
+    feedbackRenderToken++;
+    stockfishEngine_module.terminateEngine();
+}
+
 async function setMoveFeedbackStatus(selectedMove, puzzle, tone = 'neutral', renderToken = 0) {
     statusMsg.innerHTML = '';
 
@@ -398,13 +427,67 @@ async function setMoveFeedbackStatus(selectedMove, puzzle, tone = 'neutral', ren
     playedLine.style.color = '#f3f8ff';
     statusMsg.append(playedLine);
 
+    const isStale = () => renderToken !== feedbackRenderToken;
+    let latestAnswerScore = null;
+    let latestBestScore = null;
+
+    const updateAnswerTone = () => {
+        if (isStale()) return;
+        if (!latestAnswerScore || !latestBestScore) return;
+        setFeedbackAnswerTone(compareEvaluationScores(latestAnswerScore, latestBestScore) >= 0 ? 'correct' : 'wrong');
+    };
+
     const [answerEval, bestResult, playedEval] = await Promise.all([
-        getMoveEvaluationText(puzzle.fen, selectedMove),
-        getBestMoveText(puzzle.fen),
-        getMoveEvaluationText(puzzle.fen, puzzle.playedMove),
+        (async () => {
+            try {
+                const score = await eval_module.evaluateMoveFromFenStream(
+                    puzzle.fen,
+                    selectedMove,
+                    (updatedScore) => {
+                        latestAnswerScore = updatedScore;
+                        if (isStale()) return;
+                        answerLine.innerText = `Answer: ${selectedMove} (${formatEvaluationScore(updatedScore)})`;
+                        updateAnswerTone();
+                    }
+                );
+                latestAnswerScore = score;
+                updateAnswerTone();
+                return formatEvaluationScore(score);
+            } catch (_) {
+                return 'n/a';
+            }
+        })(),
+        (async () => {
+            try {
+                const { bestMove, score } = await eval_module.findBestMoveWithEvalStream(
+                    puzzle.fen,
+                    (updated) => {
+                        if (!updated.bestMove) return;
+                        latestBestScore = updated.score;
+                        if (isStale()) return;
+                        bestLine.innerText = `Best: ${updated.bestMove} (${formatEvaluationScore(updated.score)})`;
+                        updateAnswerTone();
+                    }
+                );
+                latestBestScore = score;
+                updateAnswerTone();
+                if (!bestMove) return '??';
+                return `${bestMove} (${formatEvaluationScore(score)})`;
+            } catch (_) {
+                return '??';
+            }
+        })(),
+        getMoveEvaluationText(
+            puzzle.fen,
+            puzzle.playedMove,
+            (updated) => {
+                if (isStale()) return;
+                playedLine.innerText = `Played: ${puzzle.playedMove} (${updated})`;
+            }
+        ),
     ]);
 
-    if (renderToken !== feedbackRenderToken) {
+    if (isStale()) {
         return;
     }
 
@@ -413,18 +496,65 @@ async function setMoveFeedbackStatus(selectedMove, puzzle, tone = 'neutral', ren
     playedLine.innerText = `Played: ${puzzle.playedMove} (${playedEval})`;
 }
 
-async function getMoveEvaluationText(fen, uciMove) {
+function compareEvaluationScores(leftScore, rightScore) {
+    return scoreToPawns(leftScore) - scoreToPawns(rightScore);
+}
+
+function scoreToPawns(score) {
+    if (!score || typeof score !== 'object') {
+        throw new Error(`Invalid evaluation score: ${score}`);
+    }
+
+    if (score.mate !== undefined) {
+        const mate = Number(score.mate);
+        if (!Number.isFinite(mate)) {
+            throw new Error(`Invalid mate evaluation score: ${score.mate}`);
+        }
+        const sign = mate > 0 ? 1 : -1;
+        return sign * (1000 - Math.abs(mate));
+    }
+
+    const cp = Number(score.cp);
+    if (!Number.isFinite(cp)) {
+        throw new Error(`Invalid centipawn evaluation score: ${score.cp}`);
+    }
+
+    return cp / 100;
+}
+
+async function getMoveEvaluationText(fen, uciMove, onUpdate) {
     try {
-        const score = await eval_module.evaluateMoveFromFen(fen, uciMove);
+        const score = await eval_module.evaluateMoveFromFenStream(
+            fen,
+            uciMove,
+            onUpdate ? (updatedScore) => onUpdate(formatEvaluationScore(updatedScore)) : undefined
+        );
         return formatEvaluationScore(score);
     } catch (_) {
-        return 'eval n/a';
+        return 'n/a';
     }
 }
 
-async function getBestMoveText(fen) {
+async function getBestMoveForFen(fen) {
     try {
-        const { bestMove, score } = await eval_module.findBestMoveWithEval(fen);
+        const { bestMove } = await eval_module.findBestMoveWithEval(fen);
+        return bestMove || null;
+    } catch (_) {
+        return null;
+    }
+}
+
+async function getBestMoveText(fen, onUpdate) {
+    try {
+        const { bestMove, score } = await eval_module.findBestMoveWithEvalStream(
+            fen,
+            onUpdate
+                ? (updated) => {
+                    if (!updated.bestMove) return;
+                    onUpdate(`${updated.bestMove} (${formatEvaluationScore(updated.score)})`);
+                }
+                : undefined
+        );
         if (!bestMove) return '??';
         return `${bestMove} (${formatEvaluationScore(score)})`;
     } catch (_) {
@@ -437,13 +567,15 @@ function formatEvaluationScore(score) {
         throw new Error(`Invalid evaluation score: ${score}`);
     }
 
+    const depthSuffix = score.depth != null ? ` depth ${score.depth}` : '';
+
     if (score.mate !== undefined) {
         const mate = Number(score.mate);
         if (!Number.isFinite(mate)) {
             throw new Error(`Invalid mate evaluation score: ${score.mate}`);
         }
-        if (mate > 0) return `eval M${mate}`;
-        return `eval -M${Math.abs(mate)}`;
+        if (mate > 0) return `M${mate}${depthSuffix}`;
+        return `-M${Math.abs(mate)}${depthSuffix}`;
     }
 
     const cp = Number(score.cp);
@@ -453,7 +585,7 @@ function formatEvaluationScore(score) {
 
     const pawns = cp / 100;
     const sign = pawns > 0 ? '+' : '';
-    return `eval ${sign}${pawns.toFixed(2)}`;
+    return `${sign}${pawns.toFixed(1)}${depthSuffix}`;
 }
 
 // Select a puzzle using weighted random sampling by mistake rate.
@@ -523,7 +655,7 @@ function renderAllPositions(currentId) {
 
 // Render debug details for the selected puzzle.
 function renderDebugInfo(puzzle) {
-    debugCorrectMoveEl.innerText = puzzle ? puzzle.bestMove : '-';
+    debugCorrectMoveEl.innerText = '-';
     renderLocalStorageFullness();
     const raw = storage.getItem('positions');
     localstorageStateEl.innerText = raw || '[]';

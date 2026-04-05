@@ -102,10 +102,12 @@ async function loadEvalModuleWithRealStockfish() {
     vm.createContext(sandbox);
     vm.runInContext(chessCode, sandbox, { filename: 'chess.js' });
 
-    const patchedStockfishCode = stockfishCode.replace(
-        /const STOCKFISH_WORKER_URL = '.*?';/,
-        `const STOCKFISH_WORKER_URL = ${JSON.stringify(realEnginePath)};`
-    );
+    const patchedStockfishCode = stockfishCode
+        .replace(
+            /const STOCKFISH_WORKER_URL = '.*?';/,
+            `const STOCKFISH_WORKER_URL = ${JSON.stringify(realEnginePath)};`
+        )
+        .replace(/const TARGET_DEPTH = \d+;/, 'const TARGET_DEPTH = 10;');
 
     vm.runInContext(patchedStockfishCode, sandbox, { filename: 'stockfish.js' });
     vm.runInContext(evalCode, sandbox, { filename: 'eval.js' });
@@ -128,19 +130,50 @@ test('eval module uses real Stockfish for FEN and move evaluation', async () => 
 
     try {
         const startFen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+
+        const streamedDepths = [];
+        const streamScore = await evalModule.evaluateFenStream(startFen, (update) => {
+            if (update.depth != null) streamedDepths.push(update.depth);
+        });
+        assert.equal(typeof streamScore, 'object');
+        assert.ok(streamScore.cp !== undefined || streamScore.mate !== undefined);
+        assert.ok(streamedDepths.length > 0);
+        assert.ok(streamScore.depth !== null);
+
         const fenScore = await evalModule.evaluateFen(startFen);
         assert.equal(typeof fenScore, 'object');
         assert.ok(fenScore.cp !== undefined || fenScore.mate !== undefined);
+        assert.ok(fenScore.depth !== null);
 
         const moveScore = await evalModule.evaluateMoveFromFen(startFen, 'e2e4');
         assert.equal(typeof moveScore, 'object');
         assert.ok(moveScore.cp !== undefined || moveScore.mate !== undefined);
+        assert.ok(moveScore.depth !== null);
+
+        const moveStreamDepths = [];
+        const moveStreamScore = await evalModule.evaluateMoveFromFenStream(startFen, 'e2e4', (update) => {
+            if (update.depth != null) moveStreamDepths.push(update.depth);
+        });
+        assert.equal(typeof moveStreamScore, 'object');
+        assert.ok(moveStreamScore.cp !== undefined || moveStreamScore.mate !== undefined);
+        assert.ok(moveStreamDepths.length > 0);
+        assert.ok(moveStreamScore.depth !== null);
 
         const bestResult = await evalModule.findBestMoveWithEval(startFen);
         assert.equal(typeof bestResult, 'object');
         assert.equal(typeof bestResult.bestMove, 'string');
         assert.ok(/^[a-h][1-8][a-h][1-8][qrbn]?$/.test(bestResult.bestMove));
         assert.ok(bestResult.score.cp !== undefined || bestResult.score.mate !== undefined);
+        assert.ok(bestResult.score.depth !== null);
+
+        const bestStreamUpdates = [];
+        const bestStreamResult = await evalModule.findBestMoveWithEvalStream(startFen, (update) => {
+            bestStreamUpdates.push(update);
+        });
+        assert.equal(typeof bestStreamResult, 'object');
+        assert.equal(typeof bestStreamResult.bestMove, 'string');
+        assert.ok(bestStreamUpdates.length > 0);
+        assert.ok(bestStreamResult.score.depth !== null);
     } finally {
         cleanup();
     }
