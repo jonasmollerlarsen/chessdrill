@@ -192,9 +192,9 @@ body {
 }
 
 .position-state-toggle {
-    width: 1.6rem;
-    min-width: 1.6rem;
-    height: 1.6rem;
+    width: 2.4rem;
+    min-width: 2.4rem;
+    height: 2.4rem;
     margin: 0;
     padding: 0;
     border-radius: 50%;
@@ -378,5 +378,12 @@ button:disabled { background: #6d7885; }
 
     #board-area {
         max-width: 100%;
+    }
+
+    .position-state-toggle {
+        width: 2.8rem;
+        min-width: 2.8rem;
+        height: 2.8rem;
+        font-size: 1.05rem;
     }
 }

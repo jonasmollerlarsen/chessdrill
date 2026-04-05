@@ -1,7 +1,7 @@
 // Stockfish integration utilities
 // Using local copy to avoid CORS issues with Worker scripts
 const STOCKFISH_WORKER_URL = './stockfish.worker.js';
-const DEFAULT_TARGET_DEPTH = 18;
+const DEFAULT_TARGET_DEPTH = 20;
 const MIN_TARGET_DEPTH = 1;
 const MAX_TARGET_DEPTH = 40;
 let targetDepth = DEFAULT_TARGET_DEPTH;
