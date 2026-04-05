@@ -67,12 +67,15 @@ function handleEngineMessage(event) {
             activeEval.latestDepth = Number(depthMatch[1]);
         }
 
+        const previousBestMove = activeEval.latestBestMove;
         const pvMoveMatch = line.match(/\bpv\s+([a-h][1-8][a-h][1-8][qrbn]?)/);
         if (pvMoveMatch) {
             activeEval.latestBestMove = pvMoveMatch[1];
         }
 
-        if (parsed && typeof activeEval.onUpdate === 'function') {
+        const bestMoveChanged = Boolean(activeEval.latestBestMove && activeEval.latestBestMove !== previousBestMove);
+
+        if ((parsed || bestMoveChanged) && typeof activeEval.onUpdate === 'function') {
             notifyActiveUpdate();
         }
 

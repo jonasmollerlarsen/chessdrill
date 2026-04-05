@@ -128,11 +128,12 @@ function createBestMoveUpdater(sideToMove, onUpdate) {
     }
 
     return (rawUpdate) => {
-        if (!rawUpdate || !rawUpdate.score) return;
-        onUpdate({
-            bestMove: rawUpdate.bestMove,
-            score: normalizeStockfishScore(rawUpdate.score, sideToMove, rawUpdate.depth),
-        });
+        if (!rawUpdate || !rawUpdate.bestMove) return;
+        const update = { bestMove: rawUpdate.bestMove };
+        if (rawUpdate.score) {
+            update.score = normalizeStockfishScore(rawUpdate.score, sideToMove, rawUpdate.depth);
+        }
+        onUpdate(update);
     };
 }
 

@@ -105,28 +105,25 @@ async function handleValidSelectedMove({ selectedMove }) {
     }
 
     const renderToken = ++feedbackRenderToken;
-    const feedbackPromise = setMoveFeedbackStatus(selectedMove, currentPuzzle, 'neutral', renderToken);
-    const bestMove = await getBestMoveForFen(currentPuzzle.fen);
-    if (!bestMove) {
-        await feedbackPromise;
+    const finalTone = await setMoveFeedbackStatus(selectedMove, currentPuzzle, renderToken);
+
+    if (renderToken !== feedbackRenderToken) return;
+
+    if (finalTone === null) {
         setStatusTone('neutral');
-        statusMsg.innerText = 'Could not determine best move for this position.';
+        statusMsg.innerText = 'Could not evaluate this position.';
         return;
     }
 
-    if (selectedMove === bestMove) {
-        setStatusTone('correct');
-        setFeedbackAnswerTone('correct');
-        await feedbackPromise;
-        blunders[pIdx].attempts++;
-        blunders = setBlunders(blunders);
-    } else {
-        setStatusTone('wrong');
-        setFeedbackAnswerTone('wrong');
-        await feedbackPromise;
-        blunders[pIdx].attempts++;
+    blunders[pIdx].attempts++;
+    if (finalTone === 'red') {
         blunders[pIdx].failures++;
-        blunders = setBlunders(blunders);
+    }
+    blunders = setBlunders(blunders);
+
+    setStatusTone(finalTone === 'red' ? 'wrong' : 'correct');
+
+    if (finalTone === 'red') {
         currentPuzzle = blunders[pIdx];
         renderCurrentPositionInfo(currentPuzzle);
         renderDebugInfo(currentPuzzle);
@@ -142,8 +139,9 @@ function setFeedbackAnswerTone(tone) {
     const answerLine = statusMsg.querySelector('.status-answer-line');
     if (!answerLine) return;
 
-    if (tone === 'correct') answerLine.style.color = '#8ee49a';
-    if (tone === 'wrong') answerLine.style.color = '#ff8f8f';
+    if (tone === 'correct' || tone === 'green') answerLine.style.color = '#8ee49a';
+    if (tone === 'warning' || tone === 'yellow') answerLine.style.color = '#ffd966';
+    if (tone === 'wrong' || tone === 'red') answerLine.style.color = '#ff8f8f';
     if (tone === 'neutral') answerLine.style.color = '#f3f8ff';
 }
 
@@ -404,15 +402,14 @@ function haltActiveEvaluation() {
     stockfishEngine_module.terminateEngine();
 }
 
-async function setMoveFeedbackStatus(selectedMove, puzzle, tone = 'neutral', renderToken = 0) {
+// Returns the final tone ('green', 'yellow', 'red') once evaluation completes, or null if stale/failed.
+async function setMoveFeedbackStatus(selectedMove, puzzle, renderToken = 0) {
     statusMsg.innerHTML = '';
 
     const answerLine = document.createElement('div');
     answerLine.className = 'status-answer-line';
     answerLine.innerText = `Answer: ${selectedMove} (evaluating...)`;
-    if (tone === 'correct') answerLine.style.color = '#8ee49a';
-    if (tone === 'wrong') answerLine.style.color = '#ff8f8f';
-    if (tone === 'neutral') answerLine.style.color = '#f3f8ff';
+    answerLine.style.color = '#f3f8ff';
     statusMsg.append(answerLine);
 
     const bestLine = document.createElement('div');
@@ -434,7 +431,7 @@ async function setMoveFeedbackStatus(selectedMove, puzzle, tone = 'neutral', ren
     const updateAnswerTone = () => {
         if (isStale()) return;
         if (!latestAnswerScore || !latestBestScore) return;
-        setFeedbackAnswerTone(compareEvaluationScores(latestAnswerScore, latestBestScore) >= 0 ? 'correct' : 'wrong');
+        setFeedbackAnswerTone(getAnswerToneFromScoreDifference(latestAnswerScore, latestBestScore));
     };
 
     const [answerEval, bestResult, playedEval] = await Promise.all([
@@ -463,10 +460,17 @@ async function setMoveFeedbackStatus(selectedMove, puzzle, tone = 'neutral', ren
                     puzzle.fen,
                     (updated) => {
                         if (!updated.bestMove) return;
-                        latestBestScore = updated.score;
+                        if (updated.score) {
+                            latestBestScore = updated.score;
+                        }
                         if (isStale()) return;
-                        bestLine.innerText = `Best: ${updated.bestMove} (${formatEvaluationScore(updated.score)})`;
-                        updateAnswerTone();
+                        const bestScoreText = updated.score
+                            ? formatEvaluationScore(updated.score)
+                            : 'evaluating...';
+                        bestLine.innerText = `Best: ${updated.bestMove} (${bestScoreText})`;
+                        if (updated.score) {
+                            updateAnswerTone();
+                        }
                     }
                 );
                 latestBestScore = score;
@@ -488,16 +492,23 @@ async function setMoveFeedbackStatus(selectedMove, puzzle, tone = 'neutral', ren
     ]);
 
     if (isStale()) {
-        return;
+        return null;
     }
 
     answerLine.innerText = `Answer: ${selectedMove} (${answerEval})`;
     bestLine.innerText = `Best: ${bestResult}`;
     playedLine.innerText = `Played: ${puzzle.playedMove} (${playedEval})`;
+    updateAnswerTone();
+
+    if (!latestAnswerScore || !latestBestScore) return null;
+    return getAnswerToneFromScoreDifference(latestAnswerScore, latestBestScore);
 }
 
-function compareEvaluationScores(leftScore, rightScore) {
-    return scoreToPawns(leftScore) - scoreToPawns(rightScore);
+function getAnswerToneFromScoreDifference(answerScore, bestScore) {
+    const difference = Math.abs(scoreToPawns(answerScore) - scoreToPawns(bestScore));
+    if (difference > 2) return 'red';
+    if (difference > 1) return 'yellow';
+    return 'green';
 }
 
 function scoreToPawns(score) {
@@ -532,15 +543,6 @@ async function getMoveEvaluationText(fen, uciMove, onUpdate) {
         return formatEvaluationScore(score);
     } catch (_) {
         return 'n/a';
-    }
-}
-
-async function getBestMoveForFen(fen) {
-    try {
-        const { bestMove } = await eval_module.findBestMoveWithEval(fen);
-        return bestMove || null;
-    } catch (_) {
-        return null;
     }
 }
 
