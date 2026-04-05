@@ -164,7 +164,7 @@ class EnrichedGame {
         const whitePlayer = headers.White;
         const blackPlayer = headers.Black;
         const playedMove = this.extractPlayedMoveForPly(targetPly, normalizeUci);
-        const colorToMove = (targetPly - 1) % 2 === 0 ? 'white' : 'black';
+        const colorToMove = targetPly % 2 === 0 ? 'white' : 'black';
 
         return new Puzzle({
             id: `${gameId}-${targetPly - 1}`,
@@ -184,7 +184,7 @@ class EnrichedGame {
         });
     }
 
-    /** Replay moves up to targetPly - 1 and return FEN and previous move squares. */
+    /** Replay moves to reach targetPly and return FEN and previous move squares. */
     replayMovesToPly(targetPly) {
         const moveList = this.getMoveHistory();
         if (targetPly < 1 || targetPly > moveList.length) {
@@ -196,7 +196,7 @@ class EnrichedGame {
         let previousMoveFrom = '';
         let previousMoveTo = '';
 
-        for (let i = 0; i < targetPly - 1; i++) {
+        for (let i = 0; i < targetPly; i++) {
             const parsedMove = tempGame.move(moveList[i]);
             if (!parsedMove) {
                 throw new Error(`Invalid move at ply ${i + 1}: ${moveList[i]}`);
@@ -208,13 +208,13 @@ class EnrichedGame {
         return { fen: tempGame.fen(), previousMoveFrom, previousMoveTo };
     }
 
-    /** Return the played move at targetPly in UCI notation. */
+    /** Return the played move from the position at targetPly in UCI notation. */
     extractPlayedMoveForPly(targetPly, normalizeUci) {
         const moveList = this.#chess.history({ verbose: true });
-        if (targetPly < 1 || targetPly > moveList.length) {
+        if (targetPly < 1 || targetPly >= moveList.length) {
             throw new Error(`Invalid ply: ${targetPly}. Game has ${moveList.length} moves.`);
         }
-        const moveObj = moveList[targetPly - 1];
+        const moveObj = moveList[targetPly];
         return normalizeUci(`${moveObj.from}${moveObj.to}${moveObj.promotion || ''}`);
     }
 

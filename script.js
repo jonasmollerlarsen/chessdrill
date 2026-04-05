@@ -123,17 +123,10 @@ async function handleValidSelectedMove({ selectedMove }) {
     blunders = setBlunders(blunders);
 
     setStatusTone(finalTone === 'red' ? 'wrong' : 'correct');
-
-    if (finalTone === 'red') {
-        currentPuzzle = blunders[pIdx];
-        renderCurrentPositionInfo(currentPuzzle);
-        renderDebugInfo(currentPuzzle);
-        return;
-    }
-
     currentPuzzle = blunders[pIdx];
     renderCurrentPositionInfo(currentPuzzle);
     renderDebugInfo(currentPuzzle);
+    updateStatusAreaPuzzleRow();
 }
 
 function setFeedbackAnswerTone(tone) {
@@ -150,6 +143,10 @@ function setFeedbackAnswerTone(tone) {
 function handleStatusAreaClick(event) {
     const target = event.target;
     if (!(target instanceof HTMLElement)) return;
+
+    if (handleDeleteButtonClick(target)) {
+        return;
+    }
 
     const toggle = target.closest('.position-state-toggle');
     if (toggle instanceof HTMLButtonElement) {
@@ -169,6 +166,51 @@ function handleStatusAreaClick(event) {
         refreshPuzzleUi();
         return;
     }
+}
+
+// Delete a puzzle by id and refresh UI and selection state.
+function deletePuzzleById(puzzleId) {
+    const blunders = getBlunders();
+    const puzzleIndex = blunders.findIndex((p) => p.id === puzzleId);
+    if (puzzleIndex < 0) return;
+
+    const deletingCurrentPuzzle = Boolean(currentPuzzle && currentPuzzle.id === puzzleId);
+    blunders.splice(puzzleIndex, 1);
+    const updated = setBlunders(blunders);
+
+    if (updated.length === 0) {
+        haltActiveEvaluation();
+        currentPuzzle = null;
+        hasAttemptedMoveOnCurrentPuzzle = false;
+        board_module.reset();
+        board_module.setBoardLastMoveHighlight(null, null);
+        board_module.clearCurrentMoveHighlight();
+        refreshPuzzleUi();
+        metadataDisplay.innerHTML = '';
+        setStatusTone('neutral');
+        statusMsg.innerText = 'No puzzles loaded yet.';
+        return;
+    }
+
+    if (deletingCurrentPuzzle) {
+        const replacementIndex = Math.min(puzzleIndex, updated.length - 1);
+        loadPuzzleById(updated[replacementIndex].id);
+        return;
+    }
+
+    refreshPuzzleUi();
+}
+
+// Handle delete button clicks for puzzle rows.
+function handleDeleteButtonClick(target) {
+    const deleteButton = target.closest('.position-delete-btn');
+    if (!(deleteButton instanceof HTMLButtonElement)) return false;
+
+    const puzzleId = deleteButton.dataset.puzzleId;
+    if (!puzzleId) return true;
+
+    deletePuzzleById(puzzleId);
+    return true;
 }
 
 // Handle max position changes and trim local puzzle storage.
@@ -287,6 +329,10 @@ function displayPositionMetadataLink(position, canonicalUrl) {
 function handlePositionsListClick(event) {
     const target = event.target;
     if (!(target instanceof HTMLElement)) return;
+
+    if (handleDeleteButtonClick(target)) {
+        return;
+    }
 
     const toggle = target.closest('.position-state-toggle');
     if (toggle instanceof HTMLButtonElement) {
@@ -445,6 +491,11 @@ async function setMoveFeedbackStatus(selectedMove, puzzle, renderToken = 0) {
     statusMsg.innerHTML = '';
     displayPuzzleInfoInStatus(puzzle);
 
+    const puzzleRow = statusMsg.querySelector('.position-row');
+    if (puzzleRow) {
+        puzzleRow.classList.add('is-pending');
+    }
+
     const createStatusEvalRow = (rowClass, labelText, moveText) => {
         const line = document.createElement('div');
         line.className = `${rowClass} status-eval-row`;
@@ -547,6 +598,10 @@ async function setMoveFeedbackStatus(selectedMove, puzzle, renderToken = 0) {
 
     if (isStale()) {
         return null;
+    }
+
+    if (puzzleRow) {
+        puzzleRow.classList.remove('is-pending');
     }
 
     answerEvalText.classList.remove('is-pending');
@@ -706,7 +761,7 @@ function buildPuzzleRow(puzzle, isCurrent, probability) {
     const disabledClass = !puzzleState_module.isPuzzleActive(puzzle) ? ' disabled' : '';
     const unvettedClass = state === APP_PUZZLE_STATES.UNVETTED ? ' unvetted' : '';
     const probabilityText = probability > 0 ? ` [${probability}%]` : '';
-    return `<div class="position-row${activeClass}${disabledClass}${unvettedClass}" data-puzzle-id="${puzzle.id}"><div class="position-toggle"><button class="position-state-toggle" type="button" data-puzzle-id="${puzzle.id}" data-puzzle-state="${state}" title="${stateTitle}" aria-label="${stateTitle}">${stateLabel}</button><span class="position-row-text">${puzzle.gameDate} | ${puzzle.id}: ${correct} / ${attempts} ${accuracy}${probabilityText}</span></div></div>`;
+    return `<div class="position-row${activeClass}${disabledClass}${unvettedClass}" data-puzzle-id="${puzzle.id}"><div class="position-toggle"><button class="position-state-toggle" type="button" data-puzzle-id="${puzzle.id}" data-puzzle-state="${state}" title="${stateTitle}" aria-label="${stateTitle}">${stateLabel}</button><span class="position-row-text">${puzzle.gameDate} | ${puzzle.id}: ${correct} / ${attempts} ${accuracy}${probabilityText}</span><button class="position-delete-btn" type="button" data-puzzle-id="${puzzle.id}" title="Delete puzzle from local storage" aria-label="Delete puzzle from local storage">&#128465;</button></div></div>`;
 }
 
 // Render puzzle rows with performance and probability metadata.

@@ -108,7 +108,7 @@ function parseSinglePositionUrl(urlValue) {
     }
 
     // Determine orientation: use path orientation if provided, otherwise derive from ply
-    const orientation = pathOrientation || ((ply - 1) % 2 === 0 ? 'white' : 'black');
+    const orientation = pathOrientation || (ply % 2 === 0 ? 'white' : 'black');
 
     return { gameId, orientation, ply, canonicalUrl: parsedUrl.toString() };
 }
