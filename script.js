@@ -106,20 +106,24 @@ async function handleValidSelectedMove({ selectedMove }) {
     }
 
     const renderToken = ++feedbackRenderToken;
-    const finalTone = await setMoveFeedbackStatus(selectedMove, currentPuzzle, renderToken);
+    const finalResult = await setMoveFeedbackStatus(selectedMove, currentPuzzle, renderToken);
 
     if (renderToken !== feedbackRenderToken) return;
 
-    if (finalTone === null) {
+    if (finalResult === null) {
         setStatusTone('neutral');
         statusMsg.innerText = 'Could not evaluate this position.';
         return;
     }
 
+    const finalTone = finalResult.tone;
     blunders[pIdx].attempts++;
     if (finalTone === 'red') {
         blunders[pIdx].failures++;
     }
+    blunders[pIdx].bestMove = finalResult.bestMove;
+    blunders[pIdx].bestMoveScore = finalResult.bestMoveScore;
+    blunders[pIdx].playedMoveScore = finalResult.playedMoveScore;
     blunders = setBlunders(blunders);
 
     setStatusTone(finalTone === 'red' ? 'wrong' : 'correct');
@@ -532,6 +536,7 @@ async function setMoveFeedbackStatus(selectedMove, puzzle, renderToken = 0) {
     const isStale = () => renderToken !== feedbackRenderToken;
     let latestAnswerScore = null;
     let latestBestScore = null;
+    let latestPlayedMoveScore = null;
 
     const updateAnswerTone = () => {
         if (isStale()) return;
@@ -539,8 +544,26 @@ async function setMoveFeedbackStatus(selectedMove, puzzle, renderToken = 0) {
         setFeedbackAnswerTone(getAnswerToneFromScoreDifference(latestAnswerScore, latestBestScore));
     };
 
+    // Determine which evals are already cached
+    const answerScoreCached = 
+        (selectedMove === puzzle.bestMove && puzzle.bestMoveScore) ||
+        (selectedMove === puzzle.playedMove && puzzle.playedMoveScore);
+    const bestMoveCached = puzzle.bestMove && puzzle.bestMoveScore;
+    const playedMoveCached = puzzle.playedMoveScore;
+
+    // Build evaluation promises, skipping cached moves
     const [answerEval, bestResult, playedEval] = await Promise.all([
+        // Answer eval: use cache if this move was already evaluated
         (async () => {
+            if (answerScoreCached) {
+                latestAnswerScore = selectedMove === puzzle.bestMove ? puzzle.bestMoveScore : puzzle.playedMoveScore;
+                if (!isStale()) {
+                    answerEvalText.classList.remove('is-pending');
+                    answerEvalText.innerText = `(${formatEvaluationScore(latestAnswerScore)})`;
+                    updateAnswerTone();
+                }
+                return formatEvaluationScore(latestAnswerScore);
+            }
             try {
                 const score = await eval_module.evaluateMoveFromFenStream(
                     puzzle.fen,
@@ -559,7 +582,19 @@ async function setMoveFeedbackStatus(selectedMove, puzzle, renderToken = 0) {
                 return 'n/a';
             }
         })(),
+        // Best move eval: use cache if available
         (async () => {
+            if (bestMoveCached) {
+                latestBestScore = puzzle.bestMoveScore;
+                if (!isStale()) {
+                    bestMoveText.innerText = puzzle.bestMove;
+                    bestMoveText.classList.remove('is-pending');
+                    bestEvalText.classList.remove('is-pending');
+                    bestEvalText.innerText = `(${formatEvaluationScore(latestBestScore)})`;
+                    updateAnswerTone();
+                }
+                return { move: puzzle.bestMove, eval: `(${formatEvaluationScore(puzzle.bestMoveScore)})` };
+            }
             try {
                 const { bestMove, score } = await eval_module.findBestMoveWithEvalStream(
                     puzzle.fen,
@@ -587,14 +622,31 @@ async function setMoveFeedbackStatus(selectedMove, puzzle, renderToken = 0) {
                 return { move: '??', eval: '(n/a)' };
             }
         })(),
-        getMoveEvaluationText(
-            puzzle.fen,
-            puzzle.playedMove,
-            (updated) => {
-                if (isStale()) return;
-                playedEvalText.innerText = `(${updated})`;
+        // Played move eval: use cache if available
+        (async () => {
+            if (playedMoveCached) {
+                latestPlayedMoveScore = puzzle.playedMoveScore;
+                if (!isStale()) {
+                    playedEvalText.classList.remove('is-pending');
+                    playedEvalText.innerText = `(${formatEvaluationScore(latestPlayedMoveScore)})`;
+                }
+                return formatEvaluationScore(puzzle.playedMoveScore);
             }
-        ),
+            try {
+                const score = await eval_module.evaluateMoveFromFenStream(
+                    puzzle.fen,
+                    puzzle.playedMove,
+                    (updatedScore) => {
+                        if (isStale()) return;
+                        playedEvalText.innerText = `(${formatEvaluationScore(updatedScore)})`;
+                    }
+                );
+                latestPlayedMoveScore = score;
+                return formatEvaluationScore(score);
+            } catch (_) {
+                return 'n/a';
+            }
+        })(),
     ]);
 
     if (isStale()) {
@@ -616,7 +668,12 @@ async function setMoveFeedbackStatus(selectedMove, puzzle, renderToken = 0) {
     updateAnswerTone();
 
     if (!latestAnswerScore || !latestBestScore) return null;
-    return getAnswerToneFromScoreDifference(latestAnswerScore, latestBestScore);
+    return {
+        tone: getAnswerToneFromScoreDifference(latestAnswerScore, latestBestScore),
+        bestMove: bestResult.move !== '??' ? bestResult.move : null,
+        bestMoveScore: latestBestScore,
+        playedMoveScore: latestPlayedMoveScore,
+    };
 }
 
 function getAnswerToneFromScoreDifference(answerScore, bestScore) {

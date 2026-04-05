@@ -34,8 +34,14 @@ class Puzzle {
     whitePlayer;
     /** @type {string} Username of the black player */
     blackPlayer;
+    /** @type {string|null} Best move found by engine (UCI), or null if not yet evaluated */
+    bestMove;
+    /** @type {{cp?: number, mate?: number, depth: number}|null} Best-move eval score, or null */
+    bestMoveScore;
+    /** @type {{cp?: number, mate?: number, depth: number}|null} Played-move eval score, or null */
+    playedMoveScore;
 
-    constructor({ id, fen, playedMove, color, previousMoveFrom, previousMoveTo, state, attempts, failures, gameTimestamp, gameDate, gameFormat, whitePlayer, blackPlayer }) {
+    constructor({ id, fen, playedMove, color, previousMoveFrom, previousMoveTo, state, attempts, failures, gameTimestamp, gameDate, gameFormat, whitePlayer, blackPlayer, bestMove = null, bestMoveScore = null, playedMoveScore = null }) {
         this.id = id;
         this.fen = fen;
         this.playedMove = playedMove;
@@ -50,6 +56,9 @@ class Puzzle {
         this.gameFormat = gameFormat;
         this.whitePlayer = whitePlayer;
         this.blackPlayer = blackPlayer;
+        this.bestMove = bestMove;
+        this.bestMoveScore = bestMoveScore;
+        this.playedMoveScore = playedMoveScore;
     }
 }
 
