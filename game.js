@@ -10,8 +10,6 @@ class Puzzle {
     id;
     /** @type {string} FEN of the position before the move to find */
     fen;
-    /** @type {string} Best move in UCI notation */
-    bestMove;
     /** @type {string} Move actually played in the game, in UCI notation */
     playedMove;
     /** @type {'white'|'black'} Side to move */
@@ -37,10 +35,9 @@ class Puzzle {
     /** @type {string} Username of the black player */
     blackPlayer;
 
-    constructor({ id, fen, bestMove, playedMove, color, previousMoveFrom, previousMoveTo, state, attempts, failures, gameTimestamp, gameDate, gameFormat, whitePlayer, blackPlayer }) {
+    constructor({ id, fen, playedMove, color, previousMoveFrom, previousMoveTo, state, attempts, failures, gameTimestamp, gameDate, gameFormat, whitePlayer, blackPlayer }) {
         this.id = id;
         this.fen = fen;
-        this.bestMove = bestMove;
         this.playedMove = playedMove;
         this.color = color;
         this.previousMoveFrom = previousMoveFrom;
@@ -130,7 +127,6 @@ class EnrichedGame {
                     extracted.push(new Puzzle({
                         id,
                         fen: tempGame.fen(),
-                        bestMove: normalizeUci(moveEval.best),
                         playedMove,
                         color: turn,
                         previousMoveFrom,
@@ -167,14 +163,12 @@ class EnrichedGame {
         const gameFormat = parseGameSpeed(headers.TimeControl);
         const whitePlayer = headers.White;
         const blackPlayer = headers.Black;
-        const bestMove = this.extractBestMoveForPly(targetPly, normalizeUci);
         const playedMove = this.extractPlayedMoveForPly(targetPly, normalizeUci);
         const colorToMove = (targetPly - 1) % 2 === 0 ? 'white' : 'black';
 
         return new Puzzle({
             id: `${gameId}-${targetPly - 1}`,
             fen,
-            bestMove,
             playedMove,
             color: colorToMove,
             previousMoveFrom,
@@ -188,16 +182,6 @@ class EnrichedGame {
             whitePlayer,
             blackPlayer
         });
-    }
-
-    /** Return the best move for a ply in UCI notation, falling back to the played move if no analysis. */
-    extractBestMoveForPly(targetPly, normalizeUci) {
-        const moveEval = this.analysis[targetPly - 1];
-        const bestMove = moveEval?.best;
-        if (bestMove) return normalizeUci(bestMove);
-
-        // If analysis data unavailable (e.g., from PGN format), use the played move.
-        return this.extractPlayedMoveForPly(targetPly, normalizeUci);
     }
 
     /** Replay moves up to targetPly - 1 and return FEN and previous move squares. */

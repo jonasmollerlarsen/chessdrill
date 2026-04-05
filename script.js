@@ -23,14 +23,16 @@ if (!storage) {
 
 let currentPuzzle = null;
 let hasAttemptedMoveOnCurrentPuzzle = false;
+let feedbackRenderToken = 0;
 // Extract module references
 const board_module = window.boardModule;
 const puzzleState_module = window.puzzleStateModule;
 const format_module = window.formatModule;
 const lichess_module = window.lichessModule;
+const eval_module = window.evalModule;
 
-if (!board_module || !puzzleState_module || !format_module || !lichess_module) {
-    throw new Error('Module dependencies not loaded. Ensure board.js, puzzle-state.js, format.js, game.js, and lichess.js are loaded before script.js.');
+if (!board_module || !puzzleState_module || !format_module || !lichess_module || !eval_module) {
+    throw new Error('Module dependencies not loaded. Ensure board.js, puzzle-state.js, format.js, game.js, lichess.js, and eval.js are loaded before script.js.');
 }
 
 // Make puzzle states and functions available
@@ -83,10 +85,11 @@ function attachEventListeners() {
     board_module.init("board", handleValidSelectedMove);
 }
 
-function handleValidSelectedMove({ selectedMove }) {
+async function handleValidSelectedMove({ selectedMove }) {
     if (!currentPuzzle) {
         setStatusTone('neutral');
         statusMsg.innerText = 'Load a puzzle first.';
+        return;
     }
 
     hasAttemptedMoveOnCurrentPuzzle = true;
@@ -97,22 +100,26 @@ function handleValidSelectedMove({ selectedMove }) {
     if (pIdx < 0) {
         setStatusTone('neutral');
         statusMsg.innerText = 'Puzzle not found in storage.';
+        return;
     }
+
+    const renderToken = ++feedbackRenderToken;
 
     if (selectedMove === currentPuzzle.bestMove) {
         setStatusTone('correct');
-        setMoveFeedbackStatus(selectedMove, currentPuzzle, 'correct');
+        await setMoveFeedbackStatus(selectedMove, currentPuzzle, 'correct', renderToken);
         blunders[pIdx].attempts++;
         blunders = setBlunders(blunders);
     } else {
         setStatusTone('wrong');
-        setMoveFeedbackStatus(selectedMove, currentPuzzle, 'wrong');
+        await setMoveFeedbackStatus(selectedMove, currentPuzzle, 'wrong', renderToken);
         blunders[pIdx].attempts++;
         blunders[pIdx].failures++;
         blunders = setBlunders(blunders);
         currentPuzzle = blunders[pIdx];
         renderCurrentPositionInfo(currentPuzzle);
         renderDebugInfo(currentPuzzle);
+        return;
     }
 
     currentPuzzle = blunders[pIdx];
@@ -368,12 +375,12 @@ function loadPuzzleById(puzzleId) {
     metadataDisplay.append(link);
 }
 
-function setMoveFeedbackStatus(selectedMove, puzzle, tone = 'neutral') {
+async function setMoveFeedbackStatus(selectedMove, puzzle, tone = 'neutral', renderToken = 0) {
     statusMsg.innerHTML = '';
 
     const answerLine = document.createElement('div');
     answerLine.className = 'status-answer-line';
-    answerLine.innerText = `Answer: ${selectedMove}`;
+    answerLine.innerText = `Answer: ${selectedMove} (evaluating...)`;
     if (tone === 'correct') answerLine.style.color = '#8ee49a';
     if (tone === 'wrong') answerLine.style.color = '#ff8f8f';
     if (tone === 'neutral') answerLine.style.color = '#f3f8ff';
@@ -381,15 +388,72 @@ function setMoveFeedbackStatus(selectedMove, puzzle, tone = 'neutral') {
 
     const bestLine = document.createElement('div');
     bestLine.className = 'status-detail-line';
-    bestLine.innerText = `Best: ${puzzle.bestMove}`;
+    bestLine.innerText = 'Best: (evaluating...)';
     bestLine.style.color = '#f3f8ff';
     statusMsg.append(bestLine);
 
     const playedLine = document.createElement('div');
     playedLine.className = 'status-detail-line';
-    playedLine.innerText = `Played: ${puzzle.playedMove}`;
+    playedLine.innerText = `Played: ${puzzle.playedMove} (evaluating...)`;
     playedLine.style.color = '#f3f8ff';
     statusMsg.append(playedLine);
+
+    const [answerEval, bestResult, playedEval] = await Promise.all([
+        getMoveEvaluationText(puzzle.fen, selectedMove),
+        getBestMoveText(puzzle.fen),
+        getMoveEvaluationText(puzzle.fen, puzzle.playedMove),
+    ]);
+
+    if (renderToken !== feedbackRenderToken) {
+        return;
+    }
+
+    answerLine.innerText = `Answer: ${selectedMove} (${answerEval})`;
+    bestLine.innerText = `Best: ${bestResult}`;
+    playedLine.innerText = `Played: ${puzzle.playedMove} (${playedEval})`;
+}
+
+async function getMoveEvaluationText(fen, uciMove) {
+    try {
+        const score = await eval_module.evaluateMoveFromFen(fen, uciMove);
+        return formatEvaluationScore(score);
+    } catch (_) {
+        return 'eval n/a';
+    }
+}
+
+async function getBestMoveText(fen) {
+    try {
+        const { bestMove, score } = await eval_module.findBestMoveWithEval(fen);
+        if (!bestMove) return '??';
+        return `${bestMove} (${formatEvaluationScore(score)})`;
+    } catch (_) {
+        return '??';
+    }
+}
+
+function formatEvaluationScore(score) {
+    if (!score || typeof score !== 'object') {
+        throw new Error(`Invalid evaluation score: ${score}`);
+    }
+
+    if (score.mate !== undefined) {
+        const mate = Number(score.mate);
+        if (!Number.isFinite(mate)) {
+            throw new Error(`Invalid mate evaluation score: ${score.mate}`);
+        }
+        if (mate > 0) return `eval M${mate}`;
+        return `eval -M${Math.abs(mate)}`;
+    }
+
+    const cp = Number(score.cp);
+    if (!Number.isFinite(cp)) {
+        throw new Error(`Invalid centipawn evaluation score: ${score.cp}`);
+    }
+
+    const pawns = cp / 100;
+    const sign = pawns > 0 ? '+' : '';
+    return `eval ${sign}${pawns.toFixed(2)}`;
 }
 
 // Select a puzzle using weighted random sampling by mistake rate.
