@@ -5,6 +5,7 @@ let currentMoveHighlightSquares = [];
 let boardRef = null;
 let onValidMoveCallback = null;
 let currentFen = null;
+let pendingFromSquare = null;
 
 const PREVIOUS_MOVE_HIGHLIGHT_COLOR = 'rgba(46, 204, 113, 0.75)';
 const CURRENT_MOVE_HIGHLIGHT_COLOR = 'rgba(241, 196, 15, 0.85)';
@@ -71,6 +72,7 @@ function initializePuzzlePosition(fen, color) {
     boardRef.setAttribute('position', fen);
     boardRef.setAttribute('orientation', color);
     currentFen = fen;
+    pendingFromSquare = null;
 }
 
 function reset() {
@@ -79,7 +81,120 @@ function reset() {
     }
     boardRef.start();
     currentFen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+    pendingFromSquare = null;
     clearCurrentMoveHighlight();
+}
+
+function getFenChess() {
+    if (!currentFen) {
+        throw new Error('Puzzle chess session is not initialized');
+    }
+    const chess = new Chess();
+    chess.load(currentFen);
+    return chess;
+}
+
+function isOwnPieceOnSquare(square) {
+    const normalizedSquare = normalizeSquare(square);
+    if (!normalizedSquare) return false;
+
+    const chess = getFenChess();
+    const piece = chess.get(normalizedSquare);
+    if (!piece) return false;
+    return piece.color === chess.turn();
+}
+
+function submitValidatedMove(from, to, setAction) {
+    const moveObj = { from, to, promotion: 'q' };
+
+    if (!isValidMove(moveObj)) {
+        if (typeof setAction === 'function') {
+            setAction('snapback');
+        }
+        return false;
+    }
+
+    if (typeof onValidMoveCallback !== 'function') {
+        throw new Error('Board module is not initialized with a valid move callback');
+    }
+
+    const chess = getFenChess();
+    const move = chess.move(moveObj);
+    currentFen = chess.fen();
+    boardRef.setAttribute('position', currentFen);
+    pendingFromSquare = null;
+    setCurrentMoveHighlight(from, to);
+
+    const selectedMove = `${move.from}${move.to}${move.promotion || ''}`.toLowerCase();
+    onValidMoveCallback({ selectedMove });
+    return true;
+}
+
+function squareFromBoardPointerEvent(event) {
+    if (!(event instanceof MouseEvent)) {
+        return null;
+    }
+    if (!boardRef) {
+        throw new Error('Board is not initialized');
+    }
+
+    const rect = boardRef.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) {
+        return null;
+    }
+
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
+    if (x < 0 || y < 0 || x > rect.width || y > rect.height) {
+        return null;
+    }
+
+    const squareSize = Math.min(rect.width, rect.height) / 8;
+    const fileIndexFromLeft = Math.floor(x / squareSize);
+    const rankIndexFromTop = Math.floor(y / squareSize);
+
+    if (fileIndexFromLeft < 0 || fileIndexFromLeft > 7 || rankIndexFromTop < 0 || rankIndexFromTop > 7) {
+        return null;
+    }
+
+    const orientation = String(boardRef.getAttribute('orientation') || 'white').toLowerCase();
+    const files = orientation === 'black' ? 'hgfedcba' : 'abcdefgh';
+    const file = files[fileIndexFromLeft];
+    const rank = orientation === 'black'
+        ? String(rankIndexFromTop + 1)
+        : String(8 - rankIndexFromTop);
+
+    return normalizeSquare(`${file}${rank}`);
+}
+
+// Handle click-to-move by selecting from-square then to-square.
+function boardSquareClickHandler(event) {
+    const clickedSquare = squareFromBoardPointerEvent(event);
+    if (!clickedSquare || !currentFen) return;
+
+    if (!pendingFromSquare) {
+        if (!isOwnPieceOnSquare(clickedSquare)) {
+            return;
+        }
+        pendingFromSquare = clickedSquare;
+        setCurrentMoveHighlight(clickedSquare, null);
+        return;
+    }
+
+    if (clickedSquare === pendingFromSquare) {
+        pendingFromSquare = null;
+        clearCurrentMoveHighlight();
+        return;
+    }
+
+    if (!submitValidatedMove(pendingFromSquare, clickedSquare)) {
+        if (isOwnPieceOnSquare(clickedSquare)) {
+            pendingFromSquare = clickedSquare;
+            setCurrentMoveHighlight(clickedSquare, null);
+            return;
+        }
+        setCurrentMoveHighlight(pendingFromSquare, null);
+    }
 }
 
 /** Returns true if moveObj is a legal move in the current puzzle position, without mutating state. */
@@ -104,26 +219,7 @@ function boardSelectedMoveHandler(event) {
         return;
     }
 
-    const moveObj = { from: source, to: target, promotion: 'q' };
-
-    if (!isValidMove(moveObj)) {
-        setAction('snapback');
-        return;
-    }
-
-    if (typeof onValidMoveCallback !== 'function') {
-        throw new Error('Board module is not initialized with a valid move callback');
-    }
-
-    const chess = new Chess();
-    chess.load(currentFen);
-    const move = chess.move(moveObj);
-    currentFen = chess.fen();
-    if (source && target) {
-        setCurrentMoveHighlight(source, target);
-    }
-    const selectedMove = `${move.from}${move.to}${move.promotion || ''}`.toLowerCase();
-    onValidMoveCallback({ selectedMove });
+    submitValidatedMove(source, target, setAction);
 }
 
 function init(divName, onValidMove) {
@@ -140,6 +236,7 @@ function init(divName, onValidMove) {
 
     onValidMoveCallback = onValidMove;
     boardRef.addEventListener('drop', boardSelectedMoveHandler);
+    boardRef.addEventListener('click', boardSquareClickHandler);
 }
 
 window.boardModule = {
@@ -151,6 +248,7 @@ window.boardModule = {
     reset,
     isValidMove,
     boardSelectedMoveHandler,
+    boardSquareClickHandler,
     init,
     get boardRef() { return boardRef; }
 };

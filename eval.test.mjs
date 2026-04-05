@@ -107,10 +107,12 @@ async function loadEvalModuleWithRealStockfish() {
             /const STOCKFISH_WORKER_URL = '.*?';/,
             `const STOCKFISH_WORKER_URL = ${JSON.stringify(realEnginePath)};`
         )
-        .replace(/const TARGET_DEPTH = \d+;/, 'const TARGET_DEPTH = 10;');
+        .replace(/const DEFAULT_TARGET_DEPTH = \d+;/, 'const DEFAULT_TARGET_DEPTH = 6;');
 
     vm.runInContext(patchedStockfishCode, sandbox, { filename: 'stockfish.js' });
     vm.runInContext(evalCode, sandbox, { filename: 'eval.js' });
+
+    sandbox.window.stockfishModule.setTargetDepth(6);
 
     return {
         evalModule: sandbox.window.evalModule,
