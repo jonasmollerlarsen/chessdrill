@@ -1,7 +1,10 @@
 // Stockfish integration utilities
 // Using local copy to avoid CORS issues with Worker scripts
 const STOCKFISH_WORKER_URL = './stockfish.worker.js';
-const TARGET_DEPTH = 21;
+const DEFAULT_TARGET_DEPTH = 18;
+const MIN_TARGET_DEPTH = 1;
+const MAX_TARGET_DEPTH = 40;
+let targetDepth = DEFAULT_TARGET_DEPTH;
 
 // Maps each active worker to its reject function for group termination.
 const activeWorkers = new Map();
@@ -136,7 +139,23 @@ function evaluateFenRaw(fen, options) {
         throw new Error('FEN is required');
     }
 
-    return runEval(fenValue, TARGET_DEPTH, config.onUpdate);
+    return runEval(fenValue, targetDepth, config.onUpdate);
+}
+
+function setTargetDepth(value) {
+    const parsed = Number.parseInt(String(value), 10);
+    if (!Number.isFinite(parsed)) {
+        throw new Error(`Invalid target depth: ${value}`);
+    }
+    if (parsed < MIN_TARGET_DEPTH || parsed > MAX_TARGET_DEPTH) {
+        throw new Error(`Target depth must be between ${MIN_TARGET_DEPTH} and ${MAX_TARGET_DEPTH}, got ${parsed}`);
+    }
+    targetDepth = parsed;
+    return targetDepth;
+}
+
+function getTargetDepth() {
+    return targetDepth;
 }
 
 function resolveEvaluationOptions(options) {
@@ -168,5 +187,7 @@ function terminateEngine() {
 
 window.stockfishModule = {
     evaluateFenRaw,
+    setTargetDepth,
+    getTargetDepth,
     terminateEngine,
 };

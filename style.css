@@ -331,6 +331,19 @@ button:disabled { background: #6d7885; }
     margin-bottom: 0;
 }
 
+#target-depth {
+    width: 4.5ch;
+    min-width: 4.5ch;
+    padding-left: 6px;
+    padding-right: 6px;
+    margin-bottom: 0;
+}
+
+#engine-controls label {
+    display: block;
+    margin-bottom: 6px;
+}
+
 #debug-panel {
     display: none;
 }

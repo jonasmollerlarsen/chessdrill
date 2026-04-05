@@ -13,6 +13,7 @@ let localstorageStateEl;
 let positionsContentEl;
 let metadataDisplay;
 let maxPositionsInput;
+let targetDepthInput;
 let singlePositionUrlInput;
 let loadUrlBtn;
 
@@ -45,6 +46,7 @@ window.onload = () => {
     attachEventListeners();
 
     maxPositionsInput.value = String(storage.getPositionLimit());
+    targetDepthInput.value = String(stockfishEngine_module.getTargetDepth());
 
     const limited = setBlunders(getBlunders());
     if (limited.length === 0) {
@@ -69,11 +71,12 @@ window.onload = () => {
 
 // Attach UI events to focused handlers.
 function attachEventListeners() {
-    if (!nextBtn || !clearBtn || !exportBtn || !debugToggleBtn || !fetchBtn || !maxPositionsInput || !singlePositionUrlInput || !loadUrlBtn) {
+    if (!nextBtn || !clearBtn || !exportBtn || !debugToggleBtn || !fetchBtn || !maxPositionsInput || !targetDepthInput || !singlePositionUrlInput || !loadUrlBtn) {
         throw new Error('Required DOM elements are not initialized');
     }
 
     maxPositionsInput.onchange = handleMaxPositionsChange;
+    targetDepthInput.onchange = handleTargetDepthChange;
     fetchBtn.onclick = handleFetchPositions;
     loadUrlBtn.onclick = handleLoadSinglePositionFromUrl;
     positionsContentEl.addEventListener('click', handlePositionsListClick);
@@ -85,6 +88,18 @@ function attachEventListeners() {
     debugToggleBtn.onclick = handleDebugToggle;
 
     board_module.init("board", handleValidSelectedMove);
+}
+
+function handleTargetDepthChange() {
+    if (!targetDepthInput) {
+        throw new Error('target-depth element not found');
+    }
+
+    const nextDepth = stockfishEngine_module.setTargetDepth(targetDepthInput.value);
+    targetDepthInput.value = String(nextDepth);
+
+    // Stop any in-flight eval so subsequent evaluations use the new target depth.
+    haltActiveEvaluation();
 }
 
 async function handleValidSelectedMove({ selectedMove }) {
@@ -544,12 +559,19 @@ async function setMoveFeedbackStatus(selectedMove, puzzle, renderToken = 0) {
         setFeedbackAnswerTone(getAnswerToneFromScoreDifference(latestAnswerScore, latestBestScore));
     };
 
+    const selectedTargetDepth = stockfishEngine_module.getTargetDepth();
+    const hasDepthAtLeastTarget = (score) => {
+        if (!score || typeof score !== 'object') return false;
+        if (score.depth == null) return false;
+        return Number(score.depth) >= selectedTargetDepth;
+    };
+
     // Determine which evals are already cached
     const answerScoreCached = 
-        (selectedMove === puzzle.bestMove && puzzle.bestMoveScore) ||
-        (selectedMove === puzzle.playedMove && puzzle.playedMoveScore);
-    const bestMoveCached = puzzle.bestMove && puzzle.bestMoveScore;
-    const playedMoveCached = puzzle.playedMoveScore;
+        (selectedMove === puzzle.bestMove && hasDepthAtLeastTarget(puzzle.bestMoveScore)) ||
+        (selectedMove === puzzle.playedMove && hasDepthAtLeastTarget(puzzle.playedMoveScore));
+    const bestMoveCached = Boolean(puzzle.bestMove && hasDepthAtLeastTarget(puzzle.bestMoveScore));
+    const playedMoveCached = hasDepthAtLeastTarget(puzzle.playedMoveScore);
 
     // Build evaluation promises, skipping cached moves
     const [answerEval, bestResult, playedEval] = await Promise.all([
@@ -925,6 +947,7 @@ function initDOMReferences() {
     positionsContentEl = document.getElementById('positions-content');
     metadataDisplay = document.getElementById('metadata-display');
     maxPositionsInput = document.getElementById('max-positions');
+    targetDepthInput = document.getElementById('target-depth');
     singlePositionUrlInput = document.getElementById('single-position-url');
     loadUrlBtn = document.getElementById('load-url-btn');
 //    board_module.ensureBoardHighlightStyles();
