@@ -228,6 +228,9 @@ function handleDeleteButtonClick(target) {
     const puzzleId = deleteButton.dataset.puzzleId;
     if (!puzzleId) return true;
 
+    const confirmed = window.confirm(`Delete puzzle ${puzzleId} from local storage?`);
+    if (!confirmed) return true;
+
     deletePuzzleById(puzzleId);
     return true;
 }
