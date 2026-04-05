@@ -77,6 +77,7 @@ function attachEventListeners() {
     fetchBtn.onclick = handleFetchPositions;
     loadUrlBtn.onclick = handleLoadSinglePositionFromUrl;
     positionsContentEl.addEventListener('click', handlePositionsListClick);
+    statusMsg.addEventListener('click', handleStatusAreaClick);
 
     nextBtn.onclick = loadNextPuzzle;
     clearBtn.onclick = handleClearData;
@@ -143,6 +144,31 @@ function setFeedbackAnswerTone(tone) {
     if (tone === 'warning' || tone === 'yellow') answerLine.style.color = '#ffd966';
     if (tone === 'wrong' || tone === 'red') answerLine.style.color = '#ff8f8f';
     if (tone === 'neutral') answerLine.style.color = '#f3f8ff';
+}
+
+// Handle clicks in the status area for state toggles.
+function handleStatusAreaClick(event) {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) return;
+
+    const toggle = target.closest('.position-state-toggle');
+    if (toggle instanceof HTMLButtonElement) {
+        const puzzleId = toggle.dataset.puzzleId;
+        if (!puzzleId) return;
+
+        const blunders = getBlunders();
+        const puzzle = blunders.find((p) => p.id === puzzleId);
+        if (!puzzle) return;
+
+        const previousState = puzzleState_module.normalizePuzzleState(puzzle);
+        puzzle.state = puzzleState_module.getNextPuzzleState(previousState);
+        const updated = setBlunders(blunders);
+        if (currentPuzzle && currentPuzzle.id === puzzleId) {
+            currentPuzzle = updated.find((p) => p.id === puzzleId);
+        }
+        refreshPuzzleUi();
+        return;
+    }
 }
 
 // Handle max position changes and trim local puzzle storage.
@@ -273,7 +299,10 @@ function handlePositionsListClick(event) {
 
         const previousState = puzzleState_module.normalizePuzzleState(puzzle);
         puzzle.state = puzzleState_module.getNextPuzzleState(previousState);
-        setBlunders(blunders);
+        const updated = setBlunders(blunders);
+        if (currentPuzzle && currentPuzzle.id === puzzleId) {
+            currentPuzzle = updated.find((p) => p.id === puzzleId);
+        }
         refreshPuzzleUi();
         return;
     }
@@ -359,6 +388,14 @@ function loadNextPuzzle() {
     loadPuzzleById(nextPuzzle.id);
 }
 
+// Display puzzle info in the status area.
+function displayPuzzleInfoInStatus(puzzle) {
+    const puzzleRowDiv = document.createElement('div');
+    puzzleRowDiv.innerHTML = buildPuzzleRow(puzzle, true, 0);
+    const puzzleRow = puzzleRowDiv.firstElementChild;
+    statusMsg.append(puzzleRow);
+}
+
 // Load a puzzle by id and refresh board and metadata displays.
 function loadPuzzleById(puzzleId) {
     haltActiveEvaluation();
@@ -384,6 +421,7 @@ function loadPuzzleById(puzzleId) {
 
     setStatusTone('neutral');
     statusMsg.innerHTML = '';
+    displayPuzzleInfoInStatus(currentPuzzle);
     const turnDiv = document.createElement('div');
     turnDiv.innerText = `${playerToMove} to move`;
     statusMsg.append(turnDiv);
@@ -405,6 +443,7 @@ function haltActiveEvaluation() {
 // Returns the final tone ('green', 'yellow', 'red') once evaluation completes, or null if stale/failed.
 async function setMoveFeedbackStatus(selectedMove, puzzle, renderToken = 0) {
     statusMsg.innerHTML = '';
+    displayPuzzleInfoInStatus(puzzle);
 
     const answerLine = document.createElement('div');
     answerLine.className = 'status-answer-line';
@@ -606,11 +645,24 @@ function selectWeightedPuzzle() {
     return puzzles[0];
 }
 
+// Update puzzle row in status area if displayed.
+function updateStatusAreaPuzzleRow() {
+    if (!currentPuzzle) return;
+    const existingRow = statusMsg.querySelector('.position-row');
+    if (!existingRow) return;
+    
+    const newRowDiv = document.createElement('div');
+    newRowDiv.innerHTML = buildPuzzleRow(currentPuzzle, true, 0);
+    const newRow = newRowDiv.firstElementChild;
+    existingRow.replaceWith(newRow);
+}
+
 // Refresh all UI regions dependent on current puzzle/storage state.
 function refreshPuzzleUi() {
     updateStats();
     renderCurrentPositionInfo(currentPuzzle);
     renderDebugInfo(currentPuzzle);
+    updateStatusAreaPuzzleRow();
 }
 
 // Render the puzzle list with the current selection highlighted.
@@ -620,6 +672,22 @@ function renderCurrentPositionInfo(puzzle) {
         return;
     }
     renderAllPositions(puzzle.id);
+}
+
+// Build a single puzzle row HTML element.
+function buildPuzzleRow(puzzle, isCurrent, probability) {
+    const attempts = puzzle.attempts;
+    const failures = puzzle.failures;
+    const correct = Math.max(0, attempts - failures);
+    const accuracy = attempts > 0 ? `${Math.round((correct / attempts) * 100)}%` : '-';
+    const state = puzzleState_module.normalizePuzzleState(puzzle);
+    const stateLabel = puzzleState_module.getPuzzleStateLabel(state);
+    const stateTitle = puzzleState_module.getPuzzleStateTooltip(state);
+    const activeClass = isCurrent ? ' active' : '';
+    const disabledClass = !puzzleState_module.isPuzzleActive(puzzle) ? ' disabled' : '';
+    const unvettedClass = state === APP_PUZZLE_STATES.UNVETTED ? ' unvetted' : '';
+    const probabilityText = probability > 0 ? ` [${probability}%]` : '';
+    return `<div class="position-row${activeClass}${disabledClass}${unvettedClass}" data-puzzle-id="${puzzle.id}"><div class="position-toggle"><button class="position-state-toggle" type="button" data-puzzle-id="${puzzle.id}" data-puzzle-state="${state}" title="${stateTitle}" aria-label="${stateTitle}">${stateLabel}</button><span class="position-row-text">${puzzle.gameDate} | ${puzzle.id}: ${correct} / ${attempts} ${accuracy}${probabilityText}</span></div></div>`;
 }
 
 // Render puzzle rows with performance and probability metadata.
@@ -639,18 +707,8 @@ function renderAllPositions(currentId) {
     const totalWeight = weights.reduce((a, b) => a + b, 0);
 
     const rows = blunders.map((p, idx) => {
-        const attempts = p.attempts;
-        const failures = p.failures;
-        const correct = Math.max(0, attempts - failures);
-        const accuracy = attempts > 0 ? `${Math.round((correct / attempts) * 100)}%` : '-';
         const probability = totalWeight > 0 ? Math.round((weights[idx] / totalWeight) * 100) : 0;
-        const state = puzzleState_module.normalizePuzzleState(p);
-        const stateLabel = puzzleState_module.getPuzzleStateLabel(state);
-        const stateTitle = puzzleState_module.getPuzzleStateTooltip(state);
-        const activeClass = currentId === p.id ? ' active' : '';
-        const disabledClass = !puzzleState_module.isPuzzleActive(p) ? ' disabled' : '';
-        const unvettedClass = state === APP_PUZZLE_STATES.UNVETTED ? ' unvetted' : '';
-        return `<div class="position-row${activeClass}${disabledClass}${unvettedClass}" data-puzzle-id="${p.id}"><div class="position-toggle"><button class="position-state-toggle" type="button" data-puzzle-id="${p.id}" data-puzzle-state="${state}" title="${stateTitle}" aria-label="${stateTitle}">${stateLabel}</button><span class="position-row-text">${p.gameDate} | ${p.id}: ${correct} / ${attempts} ${accuracy} [${probability}%]</span></div></div>`;
+        return buildPuzzleRow(p, currentId === p.id, probability);
     }).join('');
     positionsContentEl.innerHTML = rows;
 }
