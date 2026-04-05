@@ -106,6 +106,10 @@ body {
     color: inherit;
 }
 
+#status-msg .status-eval-move.is-pending {
+    color: #9ba8b8;
+}
+
 #status-msg .status-eval-value {
     color: #f3f8ff;
 }

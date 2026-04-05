@@ -520,6 +520,7 @@ async function setMoveFeedbackStatus(selectedMove, puzzle, renderToken = 0) {
 
     const answerRow = createStatusEvalRow('status-answer-line', 'Answer', selectedMove);
     const bestRow = createStatusEvalRow('status-detail-line', 'Best', '...');
+    bestRow.move.classList.add('is-pending');
     const playedRow = createStatusEvalRow('status-detail-line', 'Game', puzzle.playedMove);
 
     const answerLine = answerRow.line;
@@ -606,6 +607,7 @@ async function setMoveFeedbackStatus(selectedMove, puzzle, renderToken = 0) {
 
     answerEvalText.classList.remove('is-pending');
     bestEvalText.classList.remove('is-pending');
+    bestMoveText.classList.remove('is-pending');
     playedEvalText.classList.remove('is-pending');
     answerEvalText.innerText = `(${answerEval})`;
     bestMoveText.innerText = bestResult.move;
