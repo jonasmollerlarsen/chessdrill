@@ -269,6 +269,7 @@ function getGameTimestampFromUtc(dateStr, timeStr) {
 // Parse time control string and return speed category.
 function parseGameSpeed(timeControl) {
     if (timeControl === '-1') return 'correspondence';
+    if (timeControl == "-") return 'correspondence';
 
     const parts = timeControl.split('+');
     const mainTime = Number(parts[0]);

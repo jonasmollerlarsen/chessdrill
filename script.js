@@ -80,7 +80,44 @@ function attachEventListeners() {
     exportBtn.onclick = handleExportData;
     debugToggleBtn.onclick = handleDebugToggle;
 
-    board.addEventListener('drop', boardSelectedMoveHandler);
+    board_module.init("board", handleValidSelectedMove);
+}
+
+function handleValidSelectedMove({ selectedMove }) {
+    if (!currentPuzzle) {
+        setStatusTone('neutral');
+        statusMsg.innerText = 'Load a puzzle first.';
+    }
+
+    hasAttemptedMoveOnCurrentPuzzle = true;
+    updateNextPuzzleButtonAppearance();
+
+    let blunders = getBlunders();
+    const pIdx = blunders.findIndex((p) => p.id === currentPuzzle.id);
+    if (pIdx < 0) {
+        setStatusTone('neutral');
+        statusMsg.innerText = 'Puzzle not found in storage.';
+    }
+
+    if (selectedMove === currentPuzzle.bestMove) {
+        setStatusTone('correct');
+        setMoveFeedbackStatus(selectedMove, currentPuzzle, 'correct');
+        blunders[pIdx].attempts++;
+        blunders = setBlunders(blunders);
+    } else {
+        setStatusTone('wrong');
+        setMoveFeedbackStatus(selectedMove, currentPuzzle, 'wrong');
+        blunders[pIdx].attempts++;
+        blunders[pIdx].failures++;
+        blunders = setBlunders(blunders);
+        currentPuzzle = blunders[pIdx];
+        renderCurrentPositionInfo(currentPuzzle);
+        renderDebugInfo(currentPuzzle);
+    }
+
+    currentPuzzle = blunders[pIdx];
+    renderCurrentPositionInfo(currentPuzzle);
+    renderDebugInfo(currentPuzzle);
 }
 
 // Handle max position changes and trim local puzzle storage.
@@ -93,7 +130,6 @@ function handleMaxPositionsChange() {
         storage.removePositions();
         currentPuzzle = null;
         hasAttemptedMoveOnCurrentPuzzle = false;
-        board_module.resetPuzzleSession();
         board_module.setBoardLastMoveHighlight(null, null);
         board_module.clearCurrentMoveHighlight();
         setStatusTone('neutral');
@@ -230,7 +266,7 @@ function handleClearData() {
     storage.removePositions();
     currentPuzzle = null;
     hasAttemptedMoveOnCurrentPuzzle = false;
-    board_module.resetPuzzleSession();
+    board_module.reset();
     board_module.setBoardLastMoveHighlight(null, null);
     refreshPuzzleUi();
     setStatusTone('neutral');
@@ -283,7 +319,6 @@ function loadNextPuzzle() {
     if (!nextPuzzle) {
         currentPuzzle = null;
         hasAttemptedMoveOnCurrentPuzzle = false;
-        board_module.resetPuzzleSession();
         board_module.clearCurrentMoveHighlight();
         updateNextPuzzleButtonAppearance();
         board_module.setBoardLastMoveHighlight(null, null);
@@ -309,9 +344,7 @@ function loadPuzzleById(puzzleId) {
     board_module.clearCurrentMoveHighlight();
     updateNextPuzzleButtonAppearance();
 
-    board_module.initializePuzzlePosition(currentPuzzle.fen);
-    board.setAttribute('position', currentPuzzle.fen);
-    board.setAttribute('orientation', currentPuzzle.color);
+    board_module.initializePuzzlePosition(currentPuzzle.fen, currentPuzzle.color);
     board_module.setBoardLastMoveHighlight(currentPuzzle.previousMoveFrom, currentPuzzle.previousMoveTo);
     renderCurrentPositionInfo(currentPuzzle);
     renderDebugInfo(currentPuzzle);
@@ -335,61 +368,29 @@ function loadPuzzleById(puzzleId) {
     metadataDisplay.append(link);
 }
 
-// Validate and score a selected move against the current puzzle.
-function boardSelectedMoveHandler(e) {
-    if (!currentPuzzle) {
-        setStatusTone('neutral');
-        statusMsg.innerText = "Load a puzzle first.";
-        return 'snapback';
-    }
+function setMoveFeedbackStatus(selectedMove, puzzle, tone = 'neutral') {
+    statusMsg.innerHTML = '';
 
-    const { source, target } = e.detail;
-    if (source && target) {
-        hasAttemptedMoveOnCurrentPuzzle = true;
-        board_module.setCurrentMoveHighlight(source, target);
-        updateNextPuzzleButtonAppearance();
-    }
-    const move = board_module.tryPuzzleMove({ from: source, to: target, promotion: 'q' });
+    const answerLine = document.createElement('div');
+    answerLine.className = 'status-answer-line';
+    answerLine.innerText = `Answer: ${selectedMove}`;
+    if (tone === 'correct') answerLine.style.color = '#8ee49a';
+    if (tone === 'wrong') answerLine.style.color = '#ff8f8f';
+    if (tone === 'neutral') answerLine.style.color = '#f3f8ff';
+    statusMsg.append(answerLine);
 
-    if (!move) {
-        setStatusTone('neutral');
-        statusMsg.innerText = "Illegal move.";
-        return 'snapback';
-    }
+    const bestLine = document.createElement('div');
+    bestLine.className = 'status-detail-line';
+    bestLine.innerText = `Best: ${puzzle.bestMove}`;
+    bestLine.style.color = '#f3f8ff';
+    statusMsg.append(bestLine);
 
-    let blunders = getBlunders();
-    let pIdx = blunders.findIndex(p => p.id === currentPuzzle.id);
-    if (pIdx < 0) {
-        setStatusTone('neutral');
-        statusMsg.innerText = "Puzzle not found in storage.";
-        return 'snapback';
-    }
-
-    const playedMove = format_module.normalizeUci(`${move.from}${move.to}${move.promotion || ''}`);
-
-    if (playedMove === currentPuzzle.bestMove) {
-        setStatusTone('correct');
-        statusMsg.innerText = "Correct!";
-        blunders[pIdx].attempts++;
-        blunders = setBlunders(blunders);
-    } else {
-        setStatusTone('wrong');
-        statusMsg.innerText = `Wrong. Correct is ${currentPuzzle.bestMove}`;
-        blunders[pIdx].attempts++;
-        blunders[pIdx].failures++;
-        blunders = setBlunders(blunders);
-        board_module.undoPuzzleMove();
-        currentPuzzle = blunders[pIdx];
-        renderCurrentPositionInfo(currentPuzzle);
-        renderDebugInfo(currentPuzzle);
-        return 'snapback';
-    }
-
-    currentPuzzle = blunders[pIdx];
-    renderCurrentPositionInfo(currentPuzzle);
-    renderDebugInfo(currentPuzzle);
+    const playedLine = document.createElement('div');
+    playedLine.className = 'status-detail-line';
+    playedLine.innerText = `Played: ${puzzle.playedMove}`;
+    playedLine.style.color = '#f3f8ff';
+    statusMsg.append(playedLine);
 }
-
 
 // Select a puzzle using weighted random sampling by mistake rate.
 function selectWeightedPuzzle() {
@@ -521,7 +522,7 @@ function normalizePuzzleEntry(puzzle) {
 
 // Cache required DOM references and initialize board highlight styles.
 function initDOMReferences() {
-    board = document.getElementById('board');
+//    board = document.getElementById('board');
     statusMsg = document.getElementById('status-msg');
     nextBtn = document.getElementById('next-btn');
     fetchBtn = document.getElementById('fetch-btn');
@@ -537,5 +538,5 @@ function initDOMReferences() {
     maxPositionsInput = document.getElementById('max-positions');
     singlePositionUrlInput = document.getElementById('single-position-url');
     loadUrlBtn = document.getElementById('load-url-btn');
-    board_module.ensureBoardHighlightStyles();
+//    board_module.ensureBoardHighlightStyles();
 }

@@ -67,11 +67,23 @@ body {
 }
 
 #status-msg.status-correct {
-    color: #8ee49a;
+    color: #f3f8ff;
 }
 
 #status-msg.status-wrong {
+    color: #f3f8ff;
+}
+
+#status-msg.status-correct .status-answer-line {
+    color: #8ee49a;
+}
+
+#status-msg.status-wrong .status-answer-line {
     color: #ff8f8f;
+}
+
+#status-msg .status-detail-line {
+    color: #f3f8ff;
 }
 
 .sidebar {

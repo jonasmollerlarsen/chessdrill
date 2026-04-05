@@ -2,7 +2,9 @@
 let boardStylesEl = null;
 let previousMoveHighlightSquares = [];
 let currentMoveHighlightSquares = [];
-let puzzleSessionChess = null;
+let boardRef = null;
+let onValidMoveCallback = null;
+let currentFen = null;
 
 const PREVIOUS_MOVE_HIGHLIGHT_COLOR = 'rgba(46, 204, 113, 0.75)';
 const CURRENT_MOVE_HIGHLIGHT_COLOR = 'rgba(241, 196, 15, 0.85)';
@@ -65,28 +67,79 @@ function setBoardLastMoveHighlight(fromSquare, toSquare) {
     renderBoardHighlights();
 }
 
-function initializePuzzlePosition(fen) {
+function initializePuzzlePosition(fen, color) {
+    boardRef.setAttribute('position', fen);
+    boardRef.setAttribute('orientation', color);
+    currentFen = fen;
+}
+
+function reset() {
+    if (!boardRef) {
+        throw new Error('Board is not initialized');
+    }
+    boardRef.start();
+    currentFen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+    clearCurrentMoveHighlight();
+}
+
+/** Returns true if moveObj is a legal move in the current puzzle position, without mutating state. */
+function isValidMove(moveObj) {
     const chess = new Chess();
-    chess.load(fen);
-    puzzleSessionChess = chess;
-}
-
-function tryPuzzleMove(moveObj) {
-    if (!puzzleSessionChess) {
+    if (!currentFen) {
         throw new Error('Puzzle chess session is not initialized');
     }
-    return puzzleSessionChess.move(moveObj);
+    chess.load(currentFen);
+    const move = chess.move(moveObj);
+    if (!move) return false;
+    chess.undo();
+    return true;
 }
 
-function undoPuzzleMove() {
-    if (!puzzleSessionChess) {
-        throw new Error('Puzzle chess session is not initialized');
+// Handle a board drop event for puzzle move validation/scoring.
+function boardSelectedMoveHandler(event) {
+    const { source, target, setAction } = event.detail;
+
+    if (!currentFen) {
+        setAction('snapback');
+        return;
     }
-    return puzzleSessionChess.undo();
+
+    const moveObj = { from: source, to: target, promotion: 'q' };
+
+    if (!isValidMove(moveObj)) {
+        setAction('snapback');
+        return;
+    }
+
+    if (typeof onValidMoveCallback !== 'function') {
+        throw new Error('Board module is not initialized with a valid move callback');
+    }
+
+    const chess = new Chess();
+    chess.load(currentFen);
+    const move = chess.move(moveObj);
+    currentFen = chess.fen();
+    if (source && target) {
+        setCurrentMoveHighlight(source, target);
+    }
+    const selectedMove = `${move.from}${move.to}${move.promotion || ''}`.toLowerCase();
+    onValidMoveCallback({ selectedMove });
 }
 
-function resetPuzzleSession() {
-    puzzleSessionChess = null;
+function init(divName, onValidMove) {
+    boardRef = document.getElementById(divName);
+    if (!(boardRef instanceof HTMLElement)) {
+        throw new Error('init expects an existing board HTMLElement id');
+    }
+    if (boardRef.tagName.toLowerCase() !== 'chess-board') {
+        throw new Error('init expects a <chess-board> element');
+    }
+    if (typeof onValidMove !== 'function') {
+        throw new Error('init expects onValidMove callback function');
+    }
+
+    onValidMoveCallback = onValidMove;
+    boardRef.addEventListener('drop', boardSelectedMoveHandler);
 }
 
 window.boardModule = {
@@ -95,7 +148,9 @@ window.boardModule = {
     clearCurrentMoveHighlight,
     setBoardLastMoveHighlight,
     initializePuzzlePosition,
-    tryPuzzleMove,
-    undoPuzzleMove,
-    resetPuzzleSession
+    reset,
+    isValidMove,
+    boardSelectedMoveHandler,
+    init,
+    get boardRef() { return boardRef; }
 };
